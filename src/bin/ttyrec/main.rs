@@ -16,7 +16,9 @@ fn get_cmd(
     cmd: Option<std::ffi::OsString>,
 ) -> (std::ffi::OsString, Vec<std::ffi::OsString>) {
     if let Some(cmd) = cmd {
-        ("/bin/sh".into(), vec!["-c".into(), cmd])
+        let mut exec_cmd = std::ffi::OsString::from("exec ");
+        exec_cmd.push(cmd);
+        ("/bin/sh".into(), vec!["-c".into(), exec_cmd])
     } else {
         let shell =
             std::env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
