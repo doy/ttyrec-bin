@@ -747,7 +747,7 @@ dependencies = [
  "nix",
  "terminal_size",
  "thiserror",
- "vt100",
+ "vt100 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -802,6 +802,7 @@ dependencies = [
  "terminal_size",
  "textmode",
  "ttyrec",
+ "vt100 0.13.0",
 ]
 
 [[package]]
@@ -849,6 +850,16 @@ name = "version_check"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5fecdca9a5291cc2b8dcf7dc02453fee791a280f3743cb0905f8822ae463b3fe"
+
+[[package]]
+name = "vt100"
+version = "0.13.0"
+dependencies = [
+ "itoa",
+ "log",
+ "unicode-width",
+ "vte",
+]
 
 [[package]]
 name = "vt100"
