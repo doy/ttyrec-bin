@@ -1,3 +1,4 @@
+use async_std::prelude::FutureExt as _;
 use textmode::Textmode as _;
 
 #[derive(Debug, structopt::StructOpt)]
@@ -71,12 +72,12 @@ impl FrameData {
 
 enum Event {
     Render { screen: vt100::Screen },
+    Key(textmode::Key),
     Quit,
 }
 
 enum TimerAction {
     Pause,
-    NewFrameRead,
 }
 
 fn spawn_frame_reader_task(
@@ -114,27 +115,69 @@ fn spawn_timer_task(
 ) {
     async_std::task::spawn(async move {
         let mut idx = 0;
-        let start_time = std::time::Instant::now();
+        let mut start_time = std::time::Instant::now();
+        let mut paused_time = None;
         loop {
-            let wait = frames.lock_arc().await.wait_for_frame(idx);
-            if !wait.await {
-                break;
+            enum Res {
+                Wait(Option<vt100::Screen>),
+                TimerAction(
+                    Result<TimerAction, async_std::channel::RecvError>,
+                ),
             }
-            let frame = frames.lock_arc().await.get(idx).unwrap().clone();
-            async_std::task::sleep(
-                (start_time + frame.delay)
-                    .saturating_duration_since(std::time::Instant::now()),
-            )
-            .await;
-            event_w
-                .send(Event::Render {
-                    screen: frame.screen,
-                })
-                .await
-                .unwrap();
-            idx += 1;
+            let wait = async {
+                if paused_time.is_some() {
+                    std::future::pending().await
+                } else {
+                    let wait_read =
+                        frames.lock_arc().await.wait_for_frame(idx);
+                    if wait_read.await {
+                        let frame =
+                            frames.lock_arc().await.get(idx).unwrap().clone();
+                        async_std::task::sleep(
+                            (start_time + frame.delay)
+                                .saturating_duration_since(
+                                    std::time::Instant::now(),
+                                ),
+                        )
+                        .await;
+                        Res::Wait(Some(frame.screen))
+                    } else {
+                        Res::Wait(None)
+                    }
+                }
+            };
+            let action = async { Res::TimerAction(timer_r.recv().await) };
+            match wait.race(action).await {
+                Res::Wait(Some(screen)) => {
+                    event_w.send(Event::Render { screen }).await.unwrap();
+                    idx += 1;
+                }
+                Res::Wait(None) => break,
+                Res::TimerAction(Ok(action)) => match action {
+                    TimerAction::Pause => {
+                        let now = std::time::Instant::now();
+                        if let Some(time) = paused_time.take() {
+                            start_time += now - time;
+                        } else {
+                            paused_time = Some(now);
+                        }
+                    }
+                },
+                Res::TimerAction(Err(_)) => break,
+            }
         }
         event_w.send(Event::Quit).await.unwrap();
+    });
+}
+
+fn spawn_input_task(
+    mut input: textmode::Input,
+    event_w: async_std::channel::Sender<Event>,
+) {
+    async_std::task::spawn(async move {
+        while let Some(key) = input.read_key().await.unwrap() {
+            event_w.send(Event::Key(key)).await.unwrap();
+        }
     });
 }
 
@@ -160,6 +203,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
 
     spawn_frame_reader_task(frames.clone(), size, fh);
     spawn_timer_task(frames.clone(), timer_r, event_w.clone());
+    spawn_input_task(input, event_w.clone());
 
     loop {
         let event = event_r.recv().await?;
@@ -170,6 +214,13 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                 output.write(&screen.contents_formatted());
                 output.refresh().await?;
             }
+            Event::Key(key) => match key {
+                textmode::Key::Char('q') => break,
+                textmode::Key::Char(' ') => {
+                    timer_w.send(TimerAction::Pause).await.unwrap();
+                }
+                _ => {}
+            },
             Event::Quit => break,
         }
     }
