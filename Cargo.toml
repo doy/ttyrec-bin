@@ -6,3 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.51"
+async-std = { version = "1.10.0", features = ["unstable"] }
+libc = "0.2.108"
+paw = "1.0.0"
+pty-process = { version = "0.1.1", features = ["backend-async-std"] }
+structopt = { version = "0.3.25", features = ["paw", "wrap_help"] }
+terminal_size = "0.1.17"
+textmode = { version = "0.2.0", features = ["async"] }
+ttyrec = { path = "../ttyrec", version = "0.2.0", features = ["async"] }
