@@ -14,10 +14,13 @@ mod timer;
 struct Opt {
     #[structopt(short, long, default_value = "ttyrec")]
     file: std::ffi::OsString,
+
+    #[structopt(long)]
+    clamp: Option<u64>,
 }
 
 async fn async_main(opt: Opt) -> anyhow::Result<()> {
-    let Opt { file } = opt;
+    let Opt { file, clamp } = opt;
 
     let fh = async_std::fs::File::open(file).await?;
 
@@ -34,7 +37,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
     let frame_data = async_std::sync::Arc::new(async_std::sync::Mutex::new(
         frames::FrameData::new(),
     ));
-    frames::load_from_file(frame_data.clone(), fh, event_w.clone());
+    frames::load_from_file(frame_data.clone(), fh, event_w.clone(), clamp);
 
     let timer_task =
         timer::spawn_task(event_w.clone(), frame_data.clone(), timer_r);

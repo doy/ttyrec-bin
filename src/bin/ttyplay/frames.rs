@@ -85,7 +85,9 @@ pub fn load_from_file(
     frames: async_std::sync::Arc<async_std::sync::Mutex<FrameData>>,
     fh: async_std::fs::File,
     event_w: async_std::channel::Sender<crate::event::Event>,
+    clamp: Option<u64>,
 ) {
+    let clamp = clamp.map(std::time::Duration::from_millis);
     async_std::task::spawn(async move {
         let mut reader = ttyrec::Reader::new(fh);
         let size = terminal_size::terminal_size().map_or(
@@ -93,11 +95,20 @@ pub fn load_from_file(
             |(terminal_size::Width(w), terminal_size::Height(h))| (h, w),
         );
         let mut parser = vt100::Parser::new(size.0, size.1, 0);
+        let mut prev_delay = std::time::Duration::from_secs(0);
+        let mut clamped_amount = std::time::Duration::from_secs(0);
         while let Ok(frame) = reader.read_frame().await {
-            let delay = reader.offset().map_or_else(
+            let mut delay = reader.offset().map_or_else(
                 || std::time::Duration::from_secs(0),
-                |time| frame.time - time,
+                |offset| frame.time - offset - clamped_amount,
             );
+            if let Some(clamp) = clamp {
+                let clamped_delay = delay.min(prev_delay + clamp);
+                if clamped_delay < delay {
+                    clamped_amount += delay - clamped_delay;
+                    delay = clamped_delay;
+                }
+            }
             parser.process(&frame.data);
             let mut frames = frames.lock_arc().await;
             frames
@@ -107,6 +118,7 @@ pub fn load_from_file(
                 .send(crate::event::Event::FrameLoaded(Some(frames.count())))
                 .await
                 .unwrap();
+            prev_delay = delay;
         }
         frames.lock_arc().await.done_reading().await;
         event_w
