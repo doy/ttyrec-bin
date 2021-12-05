@@ -4,6 +4,7 @@ pub enum Event {
     Paused(bool),
     TimerAction(TimerAction),
     ToggleUi,
+    ToggleHelp,
     Quit,
 }
 
@@ -70,6 +71,7 @@ struct Pending {
     paused: Option<bool>,
     timer_actions: std::collections::VecDeque<TimerAction>,
     toggle_ui: bool,
+    toggle_help: bool,
     quit: bool,
 }
 
@@ -99,6 +101,9 @@ impl Pending {
             Event::ToggleUi => {
                 self.toggle_ui = !self.toggle_ui;
             }
+            Event::ToggleHelp => {
+                self.toggle_help = !self.toggle_help;
+            }
             Event::Quit => {
                 self.quit = true;
             }
@@ -112,6 +117,7 @@ impl Pending {
             || self.paused.is_some()
             || !self.timer_actions.is_empty()
             || self.toggle_ui
+            || self.toggle_help
             || self.quit
     }
 
@@ -124,6 +130,9 @@ impl Pending {
         } else if self.toggle_ui {
             self.toggle_ui = false;
             Some(Event::ToggleUi)
+        } else if self.toggle_help {
+            self.toggle_help = false;
+            Some(Event::ToggleHelp)
         } else if let Some(paused) = self.paused.take() {
             Some(Event::Paused(paused))
         } else if let Some(frame) = self.frame_loaded.take() {
@@ -169,6 +178,9 @@ pub async fn handle_events(
             }
             Event::ToggleUi => {
                 display.toggle_ui();
+            }
+            Event::ToggleHelp => {
+                display.toggle_help();
             }
             Event::Quit => {
                 break;

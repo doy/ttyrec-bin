@@ -6,6 +6,7 @@ pub struct Display {
     done_loading: bool,
     paused: bool,
     show_ui: bool,
+    show_help: bool,
 }
 
 impl Display {
@@ -16,6 +17,7 @@ impl Display {
             done_loading: false,
             paused: false,
             show_ui: true,
+            show_help: false,
         }
     }
 
@@ -37,6 +39,10 @@ impl Display {
 
     pub fn toggle_ui(&mut self) {
         self.show_ui = !self.show_ui;
+    }
+
+    pub fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
     }
 
     pub async fn render(
@@ -70,6 +76,37 @@ impl Display {
             output.set_fgcolor(textmode::color::BLACK);
             output.set_bgcolor(textmode::color::RED);
             output.write_str("\u{23f8}");
+
+            if self.show_help {
+                output.reset_attributes();
+                output.set_fgcolor(textmode::color::BLACK);
+                output.set_bgcolor(textmode::color::CYAN);
+
+                output.move_to(size.0 - 12, size.1 - 23);
+                output.write_str("         keys          ");
+                output.move_to(size.0 - 11, size.1 - 23);
+                output.write_str(" q:     quit           ");
+                output.move_to(size.0 - 10, size.1 - 23);
+                output.write_str(" space: pause/unpause  ");
+                output.move_to(size.0 - 9, size.1 - 23);
+                output.write_str(" tab:   hide/show ui   ");
+                output.move_to(size.0 - 8, size.1 - 23);
+                output.write_str(" h/p:   previous frame ");
+                output.move_to(size.0 - 7, size.1 - 23);
+                output.write_str(" l/n:   next frame     ");
+                output.move_to(size.0 - 6, size.1 - 23);
+                output.write_str(" g/0:   first frame    ");
+                output.move_to(size.0 - 5, size.1 - 23);
+                output.write_str(" G/$:   last frame     ");
+                output.move_to(size.0 - 4, size.1 - 23);
+                output.write_str(" +:     increase speed ");
+                output.move_to(size.0 - 3, size.1 - 23);
+                output.write_str(" -:     decrease speed ");
+                output.move_to(size.0 - 2, size.1 - 23);
+                output.write_str(" =:     normal speed   ");
+                output.move_to(size.0 - 1, size.1 - 23);
+                output.write_str(" ?:     hide/show help ");
+            }
 
             output.reset_attributes();
             output.move_to(pos.0, pos.1);
