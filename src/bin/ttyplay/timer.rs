@@ -123,6 +123,12 @@ pub fn spawn_task(
                             playback_ratio /= 2;
                             let now = std::time::Instant::now();
                             start_time = now - (now - start_time) / 2;
+                            event_w
+                                .send(crate::event::Event::Speed(
+                                    playback_ratio,
+                                ))
+                                .await
+                                .unwrap();
                         }
                     }
                     crate::event::TimerAction::SlowDown => {
@@ -130,6 +136,12 @@ pub fn spawn_task(
                             playback_ratio *= 2;
                             let now = std::time::Instant::now();
                             start_time = now - (now - start_time) * 2;
+                            event_w
+                                .send(crate::event::Event::Speed(
+                                    playback_ratio,
+                                ))
+                                .await
+                                .unwrap();
                         }
                     }
                     crate::event::TimerAction::DefaultSpeed => {
@@ -137,6 +149,10 @@ pub fn spawn_task(
                         start_time = now
                             - (((now - start_time) * 16) / playback_ratio);
                         playback_ratio = 16;
+                        event_w
+                            .send(crate::event::Event::Speed(playback_ratio))
+                            .await
+                            .unwrap();
                     }
                     crate::event::TimerAction::Search(s, backwards) => {
                         if let Some(new_idx) =

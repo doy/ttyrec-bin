@@ -6,6 +6,7 @@ pub struct Display {
     total_frames: usize,
     done_loading: bool,
     paused: bool,
+    speed: u32,
     show_ui: bool,
     show_help: bool,
     active_search: Option<String>,
@@ -19,6 +20,7 @@ impl Display {
             total_frames: 0,
             done_loading: false,
             paused: false,
+            speed: 16,
             show_ui: true,
             show_help: false,
             active_search: None,
@@ -43,6 +45,10 @@ impl Display {
 
     pub fn paused(&mut self, paused: bool) {
         self.paused = paused;
+    }
+
+    pub fn speed(&mut self, speed: u32) {
+        self.speed = speed;
     }
 
     pub fn toggle_ui(&mut self) {
@@ -71,6 +77,7 @@ impl Display {
 
         if self.paused && self.show_ui {
             self.render_frame_count(output);
+            self.render_speed(output);
             self.render_pause_symbol(output);
 
             if self.show_help {
@@ -107,6 +114,20 @@ impl Display {
             self.current_frame + 1,
             self.total_frames
         ));
+    }
+
+    fn render_speed(&self, output: &mut textmode::Output) {
+        if self.speed != 16 {
+            output.move_to(1, 0);
+            output.reset_attributes();
+            output.set_fgcolor(textmode::color::BLACK);
+            output.set_bgcolor(textmode::color::CYAN);
+
+            output.write_str(&format!(
+                "speed: {}x",
+                16.0 / f64::from(self.speed)
+            ));
+        }
     }
 
     #[allow(clippy::unused_self)]

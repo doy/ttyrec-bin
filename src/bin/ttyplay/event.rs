@@ -2,6 +2,7 @@ pub enum Event {
     FrameTransition((usize, vt100::Screen)),
     FrameLoaded(Option<usize>),
     Paused(bool),
+    Speed(u32),
     TimerAction(TimerAction),
     ToggleUi,
     ToggleHelp,
@@ -73,6 +74,7 @@ struct Pending {
     frame_loaded: Option<usize>,
     done_loading: bool,
     paused: Option<bool>,
+    speed: Option<u32>,
     timer_actions: std::collections::VecDeque<TimerAction>,
     toggle_ui: bool,
     toggle_help: bool,
@@ -101,6 +103,9 @@ impl Pending {
             }
             Event::Paused(paused) => {
                 self.paused = Some(paused);
+            }
+            Event::Speed(speed) => {
+                self.speed = Some(speed);
             }
             Event::TimerAction(action) => {
                 self.timer_actions.push_back(action);
@@ -137,6 +142,7 @@ impl Pending {
             || self.frame_loaded.is_some()
             || self.done_loading
             || self.paused.is_some()
+            || self.speed.is_some()
             || !self.timer_actions.is_empty()
             || self.toggle_ui
             || self.toggle_help
@@ -167,6 +173,8 @@ impl Pending {
             Some(Event::ToggleHelp)
         } else if let Some(paused) = self.paused.take() {
             Some(Event::Paused(paused))
+        } else if let Some(speed) = self.speed.take() {
+            Some(Event::Speed(speed))
         } else if let Some(frame) = self.frame_loaded.take() {
             Some(Event::FrameLoaded(Some(frame)))
         } else if self.done_loading {
@@ -206,6 +214,9 @@ pub async fn handle_events(
             }
             Event::Paused(paused) => {
                 display.paused(paused);
+            }
+            Event::Speed(speed) => {
+                display.speed(speed);
             }
             Event::ToggleUi => {
                 display.toggle_ui();
