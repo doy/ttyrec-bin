@@ -1,3 +1,7 @@
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::missing_const_for_fn)]
+
 use async_std::prelude::FutureExt as _;
 
 mod display;
@@ -31,11 +35,10 @@ fn spawn_frame_reader_task(
         );
         let mut parser = vt100::Parser::new(size.0, size.1, 0);
         while let Ok(frame) = reader.read_frame().await {
-            let delay = if let Some(time) = reader.offset() {
-                frame.time - time
-            } else {
-                std::time::Duration::from_secs(0)
-            };
+            let delay = reader.offset().map_or_else(
+                || std::time::Duration::from_secs(0),
+                |time| frame.time - time,
+            );
             parser.process(&frame.data);
             let mut frames = frames.lock_arc().await;
             frames
@@ -77,7 +80,7 @@ fn spawn_timer_task(
                         let now = std::time::Instant::now();
                         start_time = now - frame.delay();
                         if paused_time.take().is_some() {
-                            paused_time = Some(now)
+                            paused_time = Some(now);
                         }
                         force_update_time = false;
                     } else if paused_time.is_some() {
@@ -176,7 +179,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                 display.render(&screen, &mut output).await?;
             }
             event::Event::Key(key) => {
-                input::handle_input(key, event_w.clone()).await?
+                input::handle(key, event_w.clone()).await?;
             }
             event::Event::FrameLoaded(n) => {
                 if let Some(n) = n {

@@ -1,3 +1,7 @@
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::too_many_lines)]
+
 use async_std::io::{ReadExt as _, WriteExt as _};
 use async_std::prelude::FutureExt as _;
 use async_std::stream::StreamExt as _;
@@ -146,12 +150,8 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                 Err(e) => {
                     if e.raw_os_error() == Some(libc::EIO) {
                         break;
-                    } else {
-                        anyhow::bail!(
-                            "failed to read from child process: {}",
-                            e
-                        );
                     }
+                    anyhow::bail!("failed to read from child process: {}", e);
                 }
             },
             Event::Resize((h, w)) => {

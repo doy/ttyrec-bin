@@ -1,4 +1,4 @@
-pub async fn handle_input(
+pub async fn handle(
     key: textmode::Key,
     event_w: async_std::channel::Sender<crate::event::Event>,
 ) -> anyhow::Result<()> {

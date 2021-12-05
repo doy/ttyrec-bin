@@ -49,7 +49,7 @@ impl FrameData {
         self.new_frame_w
             .send(Some(self.frames.len()))
             .await
-            .unwrap()
+            .unwrap();
     }
 
     pub async fn done_reading(&mut self) {
