@@ -82,7 +82,12 @@ fn spawn_timer_task(
                         frames.lock_arc().await.get(idx).unwrap().clone();
                     if force_update_time {
                         let now = std::time::Instant::now();
-                        start_time = now - frame.delay();
+                        start_time = now - frame.delay()
+                            // give a bit of extra time before moving to the
+                            // next frame, otherwise backing up behind two
+                            // frames that are extremely close together
+                            // doesn't work
+                            + std::time::Duration::from_millis(200);
                         if paused_time.take().is_some() {
                             paused_time = Some(now);
                         }
@@ -136,17 +141,13 @@ fn spawn_timer_task(
                         idx = frames.lock_arc().await.count() - 1;
                         force_update_time = true;
                     }
+                    // force_update_time will immediately transition to the
+                    // next frame and do idx += 1 on its own
                     TimerAction::NextFrame => {
-                        let max = frames.lock_arc().await.count() - 1;
-                        if idx < max {
-                            idx += 1;
-                        }
                         force_update_time = true;
                     }
                     TimerAction::PreviousFrame => {
-                        if idx > 0 {
-                            idx -= 1;
-                        }
+                        idx = idx.saturating_sub(2);
                         force_update_time = true;
                     }
                     TimerAction::Quit => break,
