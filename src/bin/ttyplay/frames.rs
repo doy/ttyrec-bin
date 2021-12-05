@@ -66,6 +66,9 @@ impl FrameData {
         if i < self.frames.len() {
             return Box::pin(std::future::ready(true));
         }
+        if self.done_reading {
+            return Box::pin(std::future::ready(false));
+        }
         let new_frame_r = self.new_frame_r.clone();
         Box::pin(async move {
             while let Some(new_len) = new_frame_r.recv().await.unwrap() {

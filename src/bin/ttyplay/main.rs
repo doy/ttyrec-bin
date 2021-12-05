@@ -118,7 +118,9 @@ fn spawn_timer_task(
                     idx += 1;
                 }
                 Res::Wait(None) => {
-                    event_w.send(event::Event::Pause).await.unwrap();
+                    idx = frames.lock_arc().await.count() - 1;
+                    paused_time = Some(std::time::Instant::now());
+                    event_w.send(event::Event::Paused(true)).await.unwrap();
                 }
                 Res::TimerAction(Ok(action)) => match action {
                     TimerAction::Pause => {
