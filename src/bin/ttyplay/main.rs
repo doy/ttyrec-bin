@@ -61,7 +61,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
         speed,
     );
 
-    event::handle_events(event_r, timer_w.clone(), output, paused).await?;
+    event::handle_events(event_r, timer_w.clone(), output).await?;
 
     timer_w.send(event::TimerAction::Quit).await?;
     timer_task.await;

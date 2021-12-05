@@ -13,6 +13,10 @@ pub fn spawn_task(
         let mut idx = 0;
         let mut start_time = std::time::Instant::now();
         let mut paused_time = if pause_at_start {
+            event_w
+                .send(crate::event::Event::Paused(true))
+                .await
+                .unwrap();
             Some(start_time)
         } else {
             None
