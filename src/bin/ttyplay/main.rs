@@ -1,6 +1,7 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::missing_const_for_fn)]
+#![allow(clippy::struct_excessive_bools)]
 
 use async_std::prelude::FutureExt as _;
 
@@ -170,18 +171,19 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
 
     let mut display = display::Display::new();
     let mut current_screen = vt100::Parser::default().screen().clone();
+    let events = event::Reader::new(event_r);
     loop {
-        let event = event_r.recv().await?;
+        let event = events.read().await;
         match event {
-            event::Event::Render((idx, screen)) => {
+            Some(event::Event::Render((idx, screen))) => {
                 current_screen = screen.clone();
                 display.current_frame(idx);
                 display.render(&screen, &mut output).await?;
             }
-            event::Event::Key(key) => {
+            Some(event::Event::Key(key)) => {
                 input::handle(key, event_w.clone()).await?;
             }
-            event::Event::FrameLoaded(n) => {
+            Some(event::Event::FrameLoaded(n)) => {
                 if let Some(n) = n {
                     display.total_frames(n);
                 } else {
@@ -189,40 +191,42 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                 }
                 display.render(&current_screen, &mut output).await?;
             }
-            event::Event::Pause => timer_w.send(TimerAction::Pause).await?,
-            event::Event::Paused(paused) => {
+            Some(event::Event::Pause) => {
+                timer_w.send(TimerAction::Pause).await?;
+            }
+            Some(event::Event::Paused(paused)) => {
                 display.paused(paused);
                 display.render(&current_screen, &mut output).await?;
             }
-            event::Event::FirstFrame => {
+            Some(event::Event::FirstFrame) => {
                 timer_w.send(TimerAction::GotoFrame(0)).await?;
             }
-            event::Event::LastFrame => {
+            Some(event::Event::LastFrame) => {
                 timer_w
                     .send(TimerAction::GotoFrame(
                         display.get_total_frames() - 1,
                     ))
                     .await?;
             }
-            event::Event::NextFrame => {
+            Some(event::Event::NextFrame) => {
                 timer_w
                     .send(TimerAction::GotoFrame(
                         display.get_current_frame() + 1,
                     ))
                     .await?;
             }
-            event::Event::PreviousFrame => {
+            Some(event::Event::PreviousFrame) => {
                 timer_w
                     .send(TimerAction::GotoFrame(
                         display.get_current_frame() - 1,
                     ))
                     .await?;
             }
-            event::Event::ToggleUi => {
+            Some(event::Event::ToggleUi) => {
                 display.toggle_ui();
                 display.render(&current_screen, &mut output).await?;
             }
-            event::Event::Quit => {
+            Some(event::Event::Quit) | None => {
                 timer_w.send(TimerAction::Quit).await?;
                 break;
             }
