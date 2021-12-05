@@ -19,7 +19,10 @@ struct Opt {
 
 enum TimerAction {
     Pause,
-    GotoFrame(usize),
+    FirstFrame,
+    LastFrame,
+    NextFrame,
+    PreviousFrame,
     Quit,
 }
 
@@ -125,8 +128,25 @@ fn spawn_timer_task(
                             .await
                             .unwrap();
                     }
-                    TimerAction::GotoFrame(new_idx) => {
-                        idx = new_idx;
+                    TimerAction::FirstFrame => {
+                        idx = 0;
+                        force_update_time = true;
+                    }
+                    TimerAction::LastFrame => {
+                        idx = frames.lock_arc().await.count() - 1;
+                        force_update_time = true;
+                    }
+                    TimerAction::NextFrame => {
+                        let max = frames.lock_arc().await.count() - 1;
+                        if idx < max {
+                            idx += 1;
+                        }
+                        force_update_time = true;
+                    }
+                    TimerAction::PreviousFrame => {
+                        if idx > 0 {
+                            idx -= 1;
+                        }
                         force_update_time = true;
                     }
                     TimerAction::Quit => break,
@@ -185,31 +205,19 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                 continue;
             }
             event::Event::FirstFrame => {
-                timer_w.send(TimerAction::GotoFrame(0)).await?;
+                timer_w.send(TimerAction::FirstFrame).await?;
                 continue;
             }
             event::Event::LastFrame => {
-                timer_w
-                    .send(TimerAction::GotoFrame(
-                        display.get_total_frames() - 1,
-                    ))
-                    .await?;
+                timer_w.send(TimerAction::LastFrame).await?;
                 continue;
             }
             event::Event::NextFrame => {
-                timer_w
-                    .send(TimerAction::GotoFrame(
-                        display.get_current_frame() + 1,
-                    ))
-                    .await?;
+                timer_w.send(TimerAction::NextFrame).await?;
                 continue;
             }
             event::Event::PreviousFrame => {
-                timer_w
-                    .send(TimerAction::GotoFrame(
-                        display.get_current_frame() - 1,
-                    ))
-                    .await?;
+                timer_w.send(TimerAction::PreviousFrame).await?;
                 continue;
             }
             event::Event::FrameTransition((idx, screen)) => {
