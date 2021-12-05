@@ -135,13 +135,13 @@ impl Display {
         output.move_to(size.0 - 11, size.1 - 23);
         output.write_str(" tab:   hide/show ui   ");
         output.move_to(size.0 - 10, size.1 - 23);
-        output.write_str(" h/p:   previous frame ");
+        output.write_str(" h:     previous fram  ");
         output.move_to(size.0 - 9, size.1 - 23);
-        output.write_str(" l/n:   next frame     ");
+        output.write_str(" l:     next frame     ");
         output.move_to(size.0 - 8, size.1 - 23);
-        output.write_str(" g/0:   first frame    ");
+        output.write_str(" 0:     first frame    ");
         output.move_to(size.0 - 7, size.1 - 23);
-        output.write_str(" G/$:   last frame     ");
+        output.write_str(" $:     last frame     ");
         output.move_to(size.0 - 6, size.1 - 23);
         output.write_str(" +:     increase speed ");
         output.move_to(size.0 - 5, size.1 - 23);

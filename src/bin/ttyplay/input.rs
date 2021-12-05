@@ -45,22 +45,22 @@ pub fn spawn_task(
                 }
             } else {
                 let event = match key {
-                    textmode::Key::Char('g' | '0' | ')') => {
+                    textmode::Key::Char('0') => {
                         crate::event::Event::TimerAction(
                             crate::event::TimerAction::FirstFrame,
                         )
                     }
-                    textmode::Key::Char('G' | '$') => {
+                    textmode::Key::Char('$') => {
                         crate::event::Event::TimerAction(
                             crate::event::TimerAction::LastFrame,
                         )
                     }
-                    textmode::Key::Char('l' | 'n') => {
+                    textmode::Key::Char('l') => {
                         crate::event::Event::TimerAction(
                             crate::event::TimerAction::NextFrame,
                         )
                     }
-                    textmode::Key::Char('h' | 'p') => {
+                    textmode::Key::Char('h') => {
                         crate::event::Event::TimerAction(
                             crate::event::TimerAction::PreviousFrame,
                         )
