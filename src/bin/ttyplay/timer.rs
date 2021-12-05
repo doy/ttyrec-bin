@@ -6,11 +6,16 @@ pub fn spawn_task(
         async_std::sync::Mutex<crate::frames::FrameData>,
     >,
     timer_r: async_std::channel::Receiver<crate::event::TimerAction>,
+    pause_at_start: bool,
 ) -> async_std::task::JoinHandle<()> {
     async_std::task::spawn(async move {
         let mut idx = 0;
         let mut start_time = std::time::Instant::now();
-        let mut paused_time = None;
+        let mut paused_time = if pause_at_start {
+            Some(start_time)
+        } else {
+            None
+        };
         let mut force_update_time = false;
         loop {
             enum Res {

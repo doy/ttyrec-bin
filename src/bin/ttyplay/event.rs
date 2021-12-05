@@ -140,8 +140,12 @@ pub async fn handle_events(
     event_r: async_std::channel::Receiver<Event>,
     timer_w: async_std::channel::Sender<TimerAction>,
     mut output: textmode::Output,
+    pause_at_start: bool,
 ) -> anyhow::Result<()> {
     let mut display = crate::display::Display::new();
+    if pause_at_start {
+        display.paused(true);
+    }
     let mut current_screen = vt100::Parser::default().screen().clone();
     let events = Reader::new(event_r);
     while let Some(event) = events.read().await {

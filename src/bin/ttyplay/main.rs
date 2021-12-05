@@ -2,6 +2,7 @@
 #![warn(clippy::nursery)]
 #![allow(clippy::missing_const_for_fn)]
 #![allow(clippy::struct_excessive_bools)]
+#![allow(clippy::too_many_lines)]
 
 mod display;
 mod event;
@@ -17,10 +18,17 @@ struct Opt {
 
     #[structopt(long)]
     clamp: Option<u64>,
+
+    #[structopt(short, long)]
+    paused: bool,
 }
 
 async fn async_main(opt: Opt) -> anyhow::Result<()> {
-    let Opt { file, clamp } = opt;
+    let Opt {
+        file,
+        clamp,
+        paused,
+    } = opt;
 
     let fh = async_std::fs::File::open(file).await?;
 
@@ -39,10 +47,14 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
     ));
     frames::load_from_file(frame_data.clone(), fh, event_w.clone(), clamp);
 
-    let timer_task =
-        timer::spawn_task(event_w.clone(), frame_data.clone(), timer_r);
+    let timer_task = timer::spawn_task(
+        event_w.clone(),
+        frame_data.clone(),
+        timer_r,
+        paused,
+    );
 
-    event::handle_events(event_r, timer_w.clone(), output).await?;
+    event::handle_events(event_r, timer_w.clone(), output, paused).await?;
 
     timer_w.send(event::TimerAction::Quit).await?;
     timer_task.await;
