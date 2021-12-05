@@ -4,6 +4,7 @@ pub fn spawn_task(
 ) {
     async_std::task::spawn(async move {
         let mut search: Option<String> = None;
+        let mut prev_search = None;
         while let Some(key) = input.read_key().await.unwrap() {
             if let Some(ref mut search_contents) = search {
                 match key {
@@ -32,6 +33,7 @@ pub fn spawn_task(
                             ))
                             .await
                             .unwrap();
+                        prev_search = search;
                         search = None;
                     }
                     textmode::Key::Escape => {
@@ -95,6 +97,13 @@ pub fn spawn_task(
                     textmode::Key::Char('/') => {
                         search = Some("".to_string());
                         crate::event::Event::ActiveSearch("".to_string())
+                    }
+                    textmode::Key::Char('n') => {
+                        if let Some(ref search) = prev_search {
+                            crate::event::Event::RunSearch(search.clone())
+                        } else {
+                            continue;
+                        }
                     }
                     _ => continue,
                 };
