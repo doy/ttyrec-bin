@@ -30,6 +30,16 @@ pub fn spawn_task(
                     crate::event::TimerAction::Pause,
                 ),
                 textmode::Key::Ctrl(b'i') => crate::event::Event::ToggleUi,
+                textmode::Key::Char('=' | '+') => {
+                    crate::event::Event::TimerAction(
+                        crate::event::TimerAction::SpeedUp,
+                    )
+                }
+                textmode::Key::Char('_' | '-') => {
+                    crate::event::Event::TimerAction(
+                        crate::event::TimerAction::SlowDown,
+                    )
+                }
                 _ => continue,
             };
             event_w.send(event).await.unwrap();

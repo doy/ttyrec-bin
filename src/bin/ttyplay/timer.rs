@@ -17,6 +17,7 @@ pub fn spawn_task(
             None
         };
         let mut force_update_time = false;
+        let mut playback_ratio = 16;
         loop {
             enum Res {
                 Wait(Option<vt100::Screen>),
@@ -34,7 +35,7 @@ pub fn spawn_task(
                         frames.lock_arc().await.get(idx).unwrap().clone();
                     if force_update_time {
                         let now = std::time::Instant::now();
-                        start_time = now - frame.delay()
+                        start_time = now - frame.delay() * playback_ratio / 16
                             // give a bit of extra time before moving to the
                             // next frame, otherwise backing up behind two
                             // frames that are extremely close together
@@ -48,7 +49,8 @@ pub fn spawn_task(
                         std::future::pending::<()>().await;
                     } else {
                         async_std::task::sleep(
-                            (start_time + frame.delay())
+                            (start_time
+                                + frame.delay() * playback_ratio / 16)
                                 .saturating_duration_since(
                                     std::time::Instant::now(),
                                 ),
@@ -110,6 +112,20 @@ pub fn spawn_task(
                     crate::event::TimerAction::PreviousFrame => {
                         idx = idx.saturating_sub(2);
                         force_update_time = true;
+                    }
+                    crate::event::TimerAction::SpeedUp => {
+                        if playback_ratio > 1 {
+                            playback_ratio /= 2;
+                            let now = std::time::Instant::now();
+                            start_time = now - (now - start_time) / 2;
+                        }
+                    }
+                    crate::event::TimerAction::SlowDown => {
+                        if playback_ratio < 256 {
+                            playback_ratio *= 2;
+                            let now = std::time::Instant::now();
+                            start_time = now - (now - start_time) * 2;
+                        }
                     }
                     crate::event::TimerAction::Quit => break,
                 },
