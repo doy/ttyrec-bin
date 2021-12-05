@@ -15,6 +15,7 @@ pub enum TimerAction {
     PreviousFrame,
     SpeedUp,
     SlowDown,
+    DefaultSpeed,
     Quit,
 }
 

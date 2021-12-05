@@ -132,6 +132,12 @@ pub fn spawn_task(
                             start_time = now - (now - start_time) * 2;
                         }
                     }
+                    crate::event::TimerAction::DefaultSpeed => {
+                        let now = std::time::Instant::now();
+                        start_time = now
+                            - (((now - start_time) * 16) / playback_ratio);
+                        playback_ratio = 16;
+                    }
                     crate::event::TimerAction::Quit => break,
                 },
                 Res::TimerAction(Err(e)) => panic!("{}", e),
