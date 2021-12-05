@@ -1,6 +1,5 @@
 pub enum Event {
     FrameTransition((usize, vt100::Screen)),
-    Key(textmode::Key),
     FrameLoaded(Option<usize>),
     Paused(bool),
     TimerAction(TimerAction),
@@ -63,7 +62,6 @@ impl Reader {
 #[derive(Default)]
 struct Pending {
     render: Option<(usize, vt100::Screen)>,
-    key: std::collections::VecDeque<textmode::Key>,
     frame_loaded: Option<usize>,
     done_loading: bool,
     paused: Option<bool>,
@@ -81,9 +79,6 @@ impl Pending {
         match event {
             Event::FrameTransition((idx, screen)) => {
                 self.render = Some((idx, screen));
-            }
-            Event::Key(key) => {
-                self.key.push_back(key);
             }
             Event::FrameLoaded(idx) => {
                 if let Some(idx) = idx {
@@ -109,7 +104,6 @@ impl Pending {
 
     fn has_event(&self) -> bool {
         self.render.is_some()
-            || !self.key.is_empty()
             || self.frame_loaded.is_some()
             || self.done_loading
             || self.paused.is_some()
@@ -122,8 +116,6 @@ impl Pending {
         if self.quit {
             self.quit = false;
             Some(Event::Quit)
-        } else if let Some(key) = self.key.pop_front() {
-            Some(Event::Key(key))
         } else if let Some(action) = self.timer_actions.pop_front() {
             Some(Event::TimerAction(action))
         } else if self.toggle_ui {

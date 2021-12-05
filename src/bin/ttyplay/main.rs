@@ -151,17 +151,6 @@ fn spawn_timer_task(
     })
 }
 
-fn spawn_input_task(
-    event_w: async_std::channel::Sender<event::Event>,
-    mut input: textmode::Input,
-) {
-    async_std::task::spawn(async move {
-        while let Some(key) = input.read_key().await.unwrap() {
-            event_w.send(event::Event::Key(key)).await.unwrap();
-        }
-    });
-}
-
 async fn async_main(opt: Opt) -> anyhow::Result<()> {
     let Opt { file } = opt;
 
@@ -179,7 +168,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
     let (timer_w, timer_r) = async_std::channel::unbounded();
 
     spawn_frame_reader_task(event_w.clone(), frames.clone(), fh);
-    spawn_input_task(event_w.clone(), input);
+    input::spawn_task(event_w.clone(), input);
     let timer_task =
         spawn_timer_task(event_w.clone(), frames.clone(), timer_r);
 
@@ -188,12 +177,6 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
     let events = event::Reader::new(event_r);
     while let Some(event) = events.read().await {
         match event {
-            event::Event::Key(key) => {
-                if let Some(event) = input::to_event(&key) {
-                    event_w.send(event).await?;
-                }
-                continue;
-            }
             event::Event::TimerAction(action) => {
                 timer_w.send(action).await?;
                 continue;
