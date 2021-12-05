@@ -16,13 +16,13 @@ pub enum TimerAction {
     Quit,
 }
 
-pub struct Reader {
+struct Reader {
     pending: async_std::sync::Mutex<Pending>,
     cvar: async_std::sync::Condvar,
 }
 
 impl Reader {
-    pub fn new(
+    fn new(
         input: async_std::channel::Receiver<Event>,
     ) -> async_std::sync::Arc<Self> {
         let this = Self {
@@ -42,7 +42,7 @@ impl Reader {
         this
     }
 
-    pub async fn read(&self) -> Option<Event> {
+    async fn read(&self) -> Option<Event> {
         let mut pending = self
             .cvar
             .wait_until(self.pending.lock().await, |pending| {
@@ -134,4 +134,45 @@ impl Pending {
             None
         }
     }
+}
+
+pub async fn handle_events(
+    event_r: async_std::channel::Receiver<Event>,
+    timer_w: async_std::channel::Sender<TimerAction>,
+    mut output: textmode::Output,
+) -> anyhow::Result<()> {
+    let mut display = crate::display::Display::new();
+    let mut current_screen = vt100::Parser::default().screen().clone();
+    let events = Reader::new(event_r);
+    while let Some(event) = events.read().await {
+        match event {
+            Event::TimerAction(action) => {
+                timer_w.send(action).await?;
+                continue;
+            }
+            Event::FrameTransition((idx, screen)) => {
+                current_screen = screen;
+                display.current_frame(idx);
+            }
+            Event::FrameLoaded(n) => {
+                if let Some(n) = n {
+                    display.total_frames(n);
+                } else {
+                    display.done_loading();
+                }
+            }
+            Event::Paused(paused) => {
+                display.paused(paused);
+            }
+            Event::ToggleUi => {
+                display.toggle_ui();
+            }
+            Event::Quit => {
+                break;
+            }
+        }
+        display.render(&current_screen, &mut output).await?;
+    }
+
+    Ok(())
 }

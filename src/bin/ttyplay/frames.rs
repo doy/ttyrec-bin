@@ -80,3 +80,38 @@ impl FrameData {
         })
     }
 }
+
+pub fn load_from_file(
+    frames: async_std::sync::Arc<async_std::sync::Mutex<FrameData>>,
+    fh: async_std::fs::File,
+    event_w: async_std::channel::Sender<crate::event::Event>,
+) {
+    async_std::task::spawn(async move {
+        let mut reader = ttyrec::Reader::new(fh);
+        let size = terminal_size::terminal_size().map_or(
+            (24, 80),
+            |(terminal_size::Width(w), terminal_size::Height(h))| (h, w),
+        );
+        let mut parser = vt100::Parser::new(size.0, size.1, 0);
+        while let Ok(frame) = reader.read_frame().await {
+            let delay = reader.offset().map_or_else(
+                || std::time::Duration::from_secs(0),
+                |time| frame.time - time,
+            );
+            parser.process(&frame.data);
+            let mut frames = frames.lock_arc().await;
+            frames
+                .add_frame(Frame::new(parser.screen().clone(), delay))
+                .await;
+            event_w
+                .send(crate::event::Event::FrameLoaded(Some(frames.count())))
+                .await
+                .unwrap();
+        }
+        frames.lock_arc().await.done_reading().await;
+        event_w
+            .send(crate::event::Event::FrameLoaded(None))
+            .await
+            .unwrap();
+    });
+}
