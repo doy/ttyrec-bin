@@ -17,15 +17,6 @@ struct Opt {
     file: std::ffi::OsString,
 }
 
-enum TimerAction {
-    Pause,
-    FirstFrame,
-    LastFrame,
-    NextFrame,
-    PreviousFrame,
-    Quit,
-}
-
 fn spawn_frame_reader_task(
     event_w: async_std::channel::Sender<event::Event>,
     frames: async_std::sync::Arc<async_std::sync::Mutex<frames::FrameData>>,
@@ -61,7 +52,7 @@ fn spawn_frame_reader_task(
 fn spawn_timer_task(
     event_w: async_std::channel::Sender<event::Event>,
     frames: async_std::sync::Arc<async_std::sync::Mutex<frames::FrameData>>,
-    timer_r: async_std::channel::Receiver<TimerAction>,
+    timer_r: async_std::channel::Receiver<event::TimerAction>,
 ) -> async_std::task::JoinHandle<()> {
     async_std::task::spawn(async move {
         let mut idx = 0;
@@ -72,7 +63,7 @@ fn spawn_timer_task(
             enum Res {
                 Wait(Option<vt100::Screen>),
                 TimerAction(
-                    Result<TimerAction, async_std::channel::RecvError>,
+                    Result<event::TimerAction, async_std::channel::RecvError>,
                 ),
             }
             let wait = async {
@@ -123,7 +114,7 @@ fn spawn_timer_task(
                     event_w.send(event::Event::Paused(true)).await.unwrap();
                 }
                 Res::TimerAction(Ok(action)) => match action {
-                    TimerAction::Pause => {
+                    event::TimerAction::Pause => {
                         let now = std::time::Instant::now();
                         if let Some(time) = paused_time.take() {
                             start_time += now - time;
@@ -135,24 +126,24 @@ fn spawn_timer_task(
                             .await
                             .unwrap();
                     }
-                    TimerAction::FirstFrame => {
+                    event::TimerAction::FirstFrame => {
                         idx = 0;
                         force_update_time = true;
                     }
-                    TimerAction::LastFrame => {
+                    event::TimerAction::LastFrame => {
                         idx = frames.lock_arc().await.count() - 1;
                         force_update_time = true;
                     }
                     // force_update_time will immediately transition to the
                     // next frame and do idx += 1 on its own
-                    TimerAction::NextFrame => {
+                    event::TimerAction::NextFrame => {
                         force_update_time = true;
                     }
-                    TimerAction::PreviousFrame => {
+                    event::TimerAction::PreviousFrame => {
                         idx = idx.saturating_sub(2);
                         force_update_time = true;
                     }
-                    TimerAction::Quit => break,
+                    event::TimerAction::Quit => break,
                 },
                 Res::TimerAction(Err(e)) => panic!("{}", e),
             }
@@ -203,24 +194,8 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                 }
                 continue;
             }
-            event::Event::Pause => {
-                timer_w.send(TimerAction::Pause).await?;
-                continue;
-            }
-            event::Event::FirstFrame => {
-                timer_w.send(TimerAction::FirstFrame).await?;
-                continue;
-            }
-            event::Event::LastFrame => {
-                timer_w.send(TimerAction::LastFrame).await?;
-                continue;
-            }
-            event::Event::NextFrame => {
-                timer_w.send(TimerAction::NextFrame).await?;
-                continue;
-            }
-            event::Event::PreviousFrame => {
-                timer_w.send(TimerAction::PreviousFrame).await?;
+            event::Event::TimerAction(action) => {
+                timer_w.send(action).await?;
                 continue;
             }
             event::Event::FrameTransition((idx, screen)) => {
@@ -247,7 +222,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
         display.render(&current_screen, &mut output).await?;
     }
 
-    timer_w.send(TimerAction::Quit).await?;
+    timer_w.send(event::TimerAction::Quit).await?;
     timer_task.await;
 
     Ok(())

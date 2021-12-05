@@ -2,21 +2,19 @@ pub enum Event {
     FrameTransition((usize, vt100::Screen)),
     Key(textmode::Key),
     FrameLoaded(Option<usize>),
-    Pause,
     Paused(bool),
-    FirstFrame,
-    LastFrame,
-    NextFrame,
-    PreviousFrame,
+    TimerAction(TimerAction),
     ToggleUi,
     Quit,
 }
 
-enum MoveFrame {
-    First,
-    Last,
-    Next,
-    Previous,
+pub enum TimerAction {
+    Pause,
+    FirstFrame,
+    LastFrame,
+    NextFrame,
+    PreviousFrame,
+    Quit,
 }
 
 pub struct Reader {
@@ -68,9 +66,8 @@ struct Pending {
     key: std::collections::VecDeque<textmode::Key>,
     frame_loaded: Option<usize>,
     done_loading: bool,
-    pause: bool,
     paused: Option<bool>,
-    frame_controls: std::collections::VecDeque<MoveFrame>,
+    timer_actions: std::collections::VecDeque<TimerAction>,
     toggle_ui: bool,
     quit: bool,
 }
@@ -95,23 +92,11 @@ impl Pending {
                     self.done_loading = true;
                 }
             }
-            Event::Pause => {
-                self.pause = !self.pause;
-            }
             Event::Paused(paused) => {
                 self.paused = Some(paused);
             }
-            Event::FirstFrame => {
-                self.frame_controls.push_back(MoveFrame::First);
-            }
-            Event::LastFrame => {
-                self.frame_controls.push_back(MoveFrame::Last);
-            }
-            Event::NextFrame => {
-                self.frame_controls.push_back(MoveFrame::Next);
-            }
-            Event::PreviousFrame => {
-                self.frame_controls.push_back(MoveFrame::Previous);
+            Event::TimerAction(action) => {
+                self.timer_actions.push_back(action);
             }
             Event::ToggleUi => {
                 self.toggle_ui = !self.toggle_ui;
@@ -127,9 +112,8 @@ impl Pending {
             || !self.key.is_empty()
             || self.frame_loaded.is_some()
             || self.done_loading
-            || self.pause
             || self.paused.is_some()
-            || !self.frame_controls.is_empty()
+            || !self.timer_actions.is_empty()
             || self.toggle_ui
             || self.quit
     }
@@ -140,16 +124,8 @@ impl Pending {
             Some(Event::Quit)
         } else if let Some(key) = self.key.pop_front() {
             Some(Event::Key(key))
-        } else if self.pause {
-            self.pause = false;
-            Some(Event::Pause)
-        } else if let Some(dir) = self.frame_controls.pop_front() {
-            match dir {
-                MoveFrame::First => Some(Event::FirstFrame),
-                MoveFrame::Last => Some(Event::LastFrame),
-                MoveFrame::Next => Some(Event::NextFrame),
-                MoveFrame::Previous => Some(Event::PreviousFrame),
-            }
+        } else if let Some(action) = self.timer_actions.pop_front() {
+            Some(Event::TimerAction(action))
         } else if self.toggle_ui {
             self.toggle_ui = false;
             Some(Event::ToggleUi)
