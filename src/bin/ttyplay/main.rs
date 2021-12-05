@@ -21,6 +21,9 @@ struct Opt {
 
     #[structopt(short, long)]
     paused: bool,
+
+    #[structopt(short, long, default_value = "4")]
+    speed: u32,
 }
 
 async fn async_main(opt: Opt) -> anyhow::Result<()> {
@@ -28,7 +31,10 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
         file,
         clamp,
         paused,
+        speed,
     } = opt;
+
+    let speed = speed.clamp(0, 8);
 
     let fh = async_std::fs::File::open(file).await?;
 
@@ -52,6 +58,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
         frame_data.clone(),
         timer_r,
         paused,
+        speed,
     );
 
     event::handle_events(event_r, timer_w.clone(), output, paused).await?;

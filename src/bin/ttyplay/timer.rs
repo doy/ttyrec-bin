@@ -7,6 +7,7 @@ pub fn spawn_task(
     >,
     timer_r: async_std::channel::Receiver<crate::event::TimerAction>,
     pause_at_start: bool,
+    speed: u32,
 ) -> async_std::task::JoinHandle<()> {
     async_std::task::spawn(async move {
         let mut idx = 0;
@@ -17,7 +18,7 @@ pub fn spawn_task(
             None
         };
         let mut force_update_time = false;
-        let mut playback_ratio = 16;
+        let mut playback_ratio = 2_u32.pow(speed);
         loop {
             enum Res {
                 Wait(Option<vt100::Screen>),
