@@ -3,7 +3,7 @@ name = "ttyrec-bin"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.51"
@@ -15,6 +15,6 @@ signal-hook = "0.3.10"
 signal-hook-async-std = "0.2.1"
 structopt = { version = "0.3.25", features = ["paw", "wrap_help"] }
 terminal_size = "0.1.17"
-textmode = { version = "0.2.0", features = ["async"] }
+textmode = { path = "../textmode", version = "0.2.0", features = ["async"] }
 ttyrec = { path = "../ttyrec", version = "0.3.0", features = ["async"] }
 vt100 = { path = "../vt100-rust", version = "0.13.1" }

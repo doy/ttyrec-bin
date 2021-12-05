@@ -670,8 +670,6 @@ dependencies = [
 [[package]]
 name = "textmode"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5414b8281b3bfdf2104bed04039ef7ab578ab335f5123863281fd937a8d56543"
 dependencies = [
  "blocking",
  "futures-lite",
@@ -679,7 +677,7 @@ dependencies = [
  "nix",
  "terminal_size",
  "thiserror",
- "vt100 0.13.0",
+ "vt100",
 ]
 
 [[package]]
@@ -734,7 +732,7 @@ dependencies = [
  "terminal_size",
  "textmode",
  "ttyrec",
- "vt100 0.13.1",
+ "vt100",
 ]
 
 [[package]]
@@ -782,18 +780,6 @@ name = "version_check"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5fecdca9a5291cc2b8dcf7dc02453fee791a280f3743cb0905f8822ae463b3fe"
-
-[[package]]
-name = "vt100"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "831a634b9ec18a269b230e687b9dbfe240e49808198dc84b7ed4bdcfe6f85910"
-dependencies = [
- "itoa",
- "log",
- "unicode-width",
- "vte",
-]
 
 [[package]]
 name = "vt100"
