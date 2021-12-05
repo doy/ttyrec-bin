@@ -151,27 +151,11 @@ fn spawn_timer_task(
     })
 }
 
-async fn async_main(opt: Opt) -> anyhow::Result<()> {
-    let Opt { file } = opt;
-
-    let fh = async_std::fs::File::open(file).await?;
-
-    let mut input = textmode::Input::new().await?;
-    let mut output = textmode::Output::new().await?;
-    let _input_guard = input.take_raw_guard();
-    let _output_guard = output.take_screen_guard();
-
-    let frames = async_std::sync::Arc::new(async_std::sync::Mutex::new(
-        frames::FrameData::new(),
-    ));
-    let (event_w, event_r) = async_std::channel::unbounded();
-    let (timer_w, timer_r) = async_std::channel::unbounded();
-
-    spawn_frame_reader_task(event_w.clone(), frames.clone(), fh);
-    input::spawn_task(event_w.clone(), input);
-    let timer_task =
-        spawn_timer_task(event_w.clone(), frames.clone(), timer_r);
-
+async fn event_loop(
+    event_r: async_std::channel::Receiver<event::Event>,
+    timer_w: async_std::channel::Sender<event::TimerAction>,
+    mut output: textmode::Output,
+) -> anyhow::Result<()> {
     let mut display = display::Display::new();
     let mut current_screen = vt100::Parser::default().screen().clone();
     let events = event::Reader::new(event_r);
@@ -182,7 +166,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                 continue;
             }
             event::Event::FrameTransition((idx, screen)) => {
-                current_screen = screen.clone();
+                current_screen = screen;
                 display.current_frame(idx);
             }
             event::Event::FrameLoaded(n) => {
@@ -204,6 +188,33 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
         }
         display.render(&current_screen, &mut output).await?;
     }
+
+    Ok(())
+}
+
+async fn async_main(opt: Opt) -> anyhow::Result<()> {
+    let Opt { file } = opt;
+
+    let fh = async_std::fs::File::open(file).await?;
+
+    let mut input = textmode::Input::new().await?;
+    let mut output = textmode::Output::new().await?;
+    let _input_guard = input.take_raw_guard();
+    let _output_guard = output.take_screen_guard();
+
+    let (event_w, event_r) = async_std::channel::unbounded();
+    let (timer_w, timer_r) = async_std::channel::unbounded();
+
+    input::spawn_task(event_w.clone(), input);
+
+    let frames = async_std::sync::Arc::new(async_std::sync::Mutex::new(
+        frames::FrameData::new(),
+    ));
+    spawn_frame_reader_task(event_w.clone(), frames.clone(), fh);
+    let timer_task =
+        spawn_timer_task(event_w.clone(), frames.clone(), timer_r);
+
+    event_loop(event_r, timer_w.clone(), output).await?;
 
     timer_w.send(event::TimerAction::Quit).await?;
     timer_task.await;
