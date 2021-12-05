@@ -104,7 +104,7 @@ fn spawn_timer_task(
             match wait.race(action).await {
                 Res::Wait(Some(screen)) => {
                     event_w
-                        .send(event::Event::Render((idx, screen)))
+                        .send(event::Event::FrameTransition((idx, screen)))
                         .await
                         .unwrap();
                     idx += 1;
@@ -212,7 +212,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                     .await?;
                 continue;
             }
-            event::Event::Render((idx, screen)) => {
+            event::Event::FrameTransition((idx, screen)) => {
                 current_screen = screen.clone();
                 display.current_frame(idx);
             }

@@ -1,5 +1,5 @@
 pub enum Event {
-    Render((usize, vt100::Screen)),
+    FrameTransition((usize, vt100::Screen)),
     Key(textmode::Key),
     FrameLoaded(Option<usize>),
     Pause,
@@ -82,7 +82,7 @@ impl Pending {
 
     fn event(&mut self, event: Event) {
         match event {
-            Event::Render((idx, screen)) => {
+            Event::FrameTransition((idx, screen)) => {
                 self.render = Some((idx, screen));
             }
             Event::Key(key) => {
@@ -161,7 +161,7 @@ impl Pending {
             self.done_loading = false;
             Some(Event::FrameLoaded(None))
         } else if let Some((idx, screen)) = self.render.take() {
-            Some(Event::Render((idx, screen)))
+            Some(Event::FrameTransition((idx, screen)))
         } else {
             None
         }
