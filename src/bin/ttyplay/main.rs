@@ -215,6 +215,10 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                     ))
                     .await?;
             }
+            event::Event::ToggleUi => {
+                display.toggle_ui();
+                display.render(&current_screen, &mut output).await?;
+            }
             event::Event::Quit => {
                 timer_w.send(TimerAction::Quit).await?;
                 break;

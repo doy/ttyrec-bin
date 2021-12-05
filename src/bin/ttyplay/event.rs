@@ -8,5 +8,6 @@ pub enum Event {
     LastFrame,
     NextFrame,
     PreviousFrame,
+    ToggleUi,
     Quit,
 }

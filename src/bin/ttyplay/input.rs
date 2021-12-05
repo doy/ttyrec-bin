@@ -11,6 +11,7 @@ pub async fn handle_input(
         textmode::Key::Char('h' | 'p') => crate::event::Event::PreviousFrame,
         textmode::Key::Char('q') => crate::event::Event::Quit,
         textmode::Key::Char(' ') => crate::event::Event::Pause,
+        textmode::Key::Ctrl(b'i') => crate::event::Event::ToggleUi,
         _ => return Ok(()),
     };
 

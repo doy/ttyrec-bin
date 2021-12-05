@@ -5,6 +5,7 @@ pub struct Display {
     total_frames: usize,
     done_loading: bool,
     paused: bool,
+    show_ui: bool,
 }
 
 impl Display {
@@ -14,6 +15,7 @@ impl Display {
             total_frames: 0,
             done_loading: false,
             paused: false,
+            show_ui: true,
         }
     }
 
@@ -41,6 +43,10 @@ impl Display {
         self.paused = paused;
     }
 
+    pub fn toggle_ui(&mut self) {
+        self.show_ui = !self.show_ui;
+    }
+
     pub async fn render(
         &self,
         screen: &vt100::Screen,
@@ -49,7 +55,7 @@ impl Display {
         output.clear();
         output.move_to(0, 0);
         output.write(&screen.contents_formatted());
-        if self.paused {
+        if self.paused && self.show_ui {
             let pos = output.screen().cursor_position();
 
             output.move_to(0, 0);
