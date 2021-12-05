@@ -1,8 +1,5 @@
-pub async fn handle(
-    key: textmode::Key,
-    event_w: async_std::channel::Sender<crate::event::Event>,
-) -> anyhow::Result<()> {
-    let event = match key {
+pub fn to_event(key: &textmode::Key) -> Option<crate::event::Event> {
+    Some(match key {
         textmode::Key::Char('g' | '0' | ')') => {
             crate::event::Event::FirstFrame
         }
@@ -12,10 +9,6 @@ pub async fn handle(
         textmode::Key::Char('q') => crate::event::Event::Quit,
         textmode::Key::Char(' ') => crate::event::Event::Pause,
         textmode::Key::Ctrl(b'i') => crate::event::Event::ToggleUi,
-        _ => return Ok(()),
-    };
-
-    event_w.send(event).await?;
-
-    Ok(())
+        _ => return None,
+    })
 }

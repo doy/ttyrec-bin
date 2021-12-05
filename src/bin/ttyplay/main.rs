@@ -172,67 +172,71 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
     let mut display = display::Display::new();
     let mut current_screen = vt100::Parser::default().screen().clone();
     let events = event::Reader::new(event_r);
-    loop {
-        let event = events.read().await;
+    while let Some(event) = events.read().await {
         match event {
-            Some(event::Event::Render((idx, screen))) => {
-                current_screen = screen.clone();
-                display.current_frame(idx);
-                display.render(&screen, &mut output).await?;
-            }
-            Some(event::Event::Key(key)) => {
-                input::handle(key, event_w.clone()).await?;
-            }
-            Some(event::Event::FrameLoaded(n)) => {
-                if let Some(n) = n {
-                    display.total_frames(n);
-                } else {
-                    display.done_loading();
+            event::Event::Key(key) => {
+                if let Some(event) = input::to_event(&key) {
+                    event_w.send(event).await?;
                 }
-                display.render(&current_screen, &mut output).await?;
+                continue;
             }
-            Some(event::Event::Pause) => {
+            event::Event::Pause => {
                 timer_w.send(TimerAction::Pause).await?;
+                continue;
             }
-            Some(event::Event::Paused(paused)) => {
-                display.paused(paused);
-                display.render(&current_screen, &mut output).await?;
-            }
-            Some(event::Event::FirstFrame) => {
+            event::Event::FirstFrame => {
                 timer_w.send(TimerAction::GotoFrame(0)).await?;
+                continue;
             }
-            Some(event::Event::LastFrame) => {
+            event::Event::LastFrame => {
                 timer_w
                     .send(TimerAction::GotoFrame(
                         display.get_total_frames() - 1,
                     ))
                     .await?;
+                continue;
             }
-            Some(event::Event::NextFrame) => {
+            event::Event::NextFrame => {
                 timer_w
                     .send(TimerAction::GotoFrame(
                         display.get_current_frame() + 1,
                     ))
                     .await?;
+                continue;
             }
-            Some(event::Event::PreviousFrame) => {
+            event::Event::PreviousFrame => {
                 timer_w
                     .send(TimerAction::GotoFrame(
                         display.get_current_frame() - 1,
                     ))
                     .await?;
+                continue;
             }
-            Some(event::Event::ToggleUi) => {
+            event::Event::Render((idx, screen)) => {
+                current_screen = screen.clone();
+                display.current_frame(idx);
+            }
+            event::Event::FrameLoaded(n) => {
+                if let Some(n) = n {
+                    display.total_frames(n);
+                } else {
+                    display.done_loading();
+                }
+            }
+            event::Event::Paused(paused) => {
+                display.paused(paused);
+            }
+            event::Event::ToggleUi => {
                 display.toggle_ui();
-                display.render(&current_screen, &mut output).await?;
             }
-            Some(event::Event::Quit) | None => {
-                timer_w.send(TimerAction::Quit).await?;
+            event::Event::Quit => {
                 break;
             }
         }
+        display.render(&current_screen, &mut output).await?;
     }
 
+    timer_w.send(TimerAction::Quit).await?;
     timer_task.await;
 
     Ok(())
