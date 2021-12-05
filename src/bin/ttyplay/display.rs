@@ -40,35 +40,34 @@ impl Display {
     ) -> anyhow::Result<()> {
         output.clear();
         output.move_to(0, 0);
-        output.reset_attributes();
         output.write(&screen.contents_formatted());
-        let pos = output.screen().cursor_position();
-
-        output.move_to(0, 0);
-        output.reset_attributes();
-        output.set_fgcolor(textmode::color::BLACK);
-        if self.done_loading {
-            output.set_bgcolor(textmode::color::CYAN);
-        } else {
-            output.set_bgcolor(textmode::color::RED);
-        }
-        output.write_str(&format!(
-            " {}/{} ",
-            self.current_frame + 1,
-            self.total_frames
-        ));
-
         if self.paused {
+            let pos = output.screen().cursor_position();
+
+            output.move_to(0, 0);
+            output.reset_attributes();
+            output.set_fgcolor(textmode::color::BLACK);
+            if self.done_loading {
+                output.set_bgcolor(textmode::color::CYAN);
+            } else {
+                output.set_bgcolor(textmode::color::RED);
+            }
+            output.write_str(&format!(
+                " {}/{} ",
+                self.current_frame + 1,
+                self.total_frames
+            ));
+
             let size = output.screen().size();
             output.move_to(0, size.1 - 1);
             output.reset_attributes();
             output.set_fgcolor(textmode::color::BLACK);
             output.set_bgcolor(textmode::color::RED);
-            output.write_str("⏸")
-        }
+            output.write_str("⏸");
 
-        output.reset_attributes();
-        output.move_to(pos.0, pos.1);
+            output.reset_attributes();
+            output.move_to(pos.0, pos.1);
+        }
 
         output.refresh().await?;
 
