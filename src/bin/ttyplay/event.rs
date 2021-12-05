@@ -5,6 +5,9 @@ pub enum Event {
     TimerAction(TimerAction),
     ToggleUi,
     ToggleHelp,
+    ActiveSearch(String),
+    CancelSearch,
+    RunSearch(String),
     Quit,
 }
 
@@ -17,6 +20,7 @@ pub enum TimerAction {
     SpeedUp,
     SlowDown,
     DefaultSpeed,
+    Search(String),
     Quit,
 }
 
@@ -72,6 +76,9 @@ struct Pending {
     timer_actions: std::collections::VecDeque<TimerAction>,
     toggle_ui: bool,
     toggle_help: bool,
+    active_search: Option<String>,
+    cancel_search: bool,
+    run_search: Option<String>,
     quit: bool,
 }
 
@@ -104,6 +111,21 @@ impl Pending {
             Event::ToggleHelp => {
                 self.toggle_help = !self.toggle_help;
             }
+            Event::ActiveSearch(s) => {
+                self.active_search = Some(s);
+                self.cancel_search = false;
+                self.run_search = None;
+            }
+            Event::CancelSearch => {
+                self.active_search = None;
+                self.cancel_search = true;
+                self.run_search = None;
+            }
+            Event::RunSearch(s) => {
+                self.active_search = None;
+                self.cancel_search = false;
+                self.run_search = Some(s);
+            }
             Event::Quit => {
                 self.quit = true;
             }
@@ -118,6 +140,9 @@ impl Pending {
             || !self.timer_actions.is_empty()
             || self.toggle_ui
             || self.toggle_help
+            || self.active_search.is_some()
+            || self.cancel_search
+            || self.run_search.is_some()
             || self.quit
     }
 
@@ -127,6 +152,13 @@ impl Pending {
             Some(Event::Quit)
         } else if let Some(action) = self.timer_actions.pop_front() {
             Some(Event::TimerAction(action))
+        } else if let Some(active_search) = self.active_search.take() {
+            Some(Event::ActiveSearch(active_search))
+        } else if self.cancel_search {
+            self.cancel_search = false;
+            Some(Event::CancelSearch)
+        } else if let Some(run_search) = self.run_search.take() {
+            Some(Event::RunSearch(run_search))
         } else if self.toggle_ui {
             self.toggle_ui = false;
             Some(Event::ToggleUi)
@@ -154,7 +186,6 @@ pub async fn handle_events(
     mut output: textmode::Output,
 ) -> anyhow::Result<()> {
     let mut display = crate::display::Display::new();
-    let mut current_screen = vt100::Parser::default().screen().clone();
     let events = Reader::new(event_r);
     while let Some(event) = events.read().await {
         match event {
@@ -163,7 +194,7 @@ pub async fn handle_events(
                 continue;
             }
             Event::FrameTransition((idx, screen)) => {
-                current_screen = screen;
+                display.screen(screen);
                 display.current_frame(idx);
             }
             Event::FrameLoaded(n) => {
@@ -182,11 +213,21 @@ pub async fn handle_events(
             Event::ToggleHelp => {
                 display.toggle_help();
             }
+            Event::ActiveSearch(s) => {
+                display.active_search(s);
+            }
+            Event::CancelSearch => {
+                display.clear_search();
+            }
+            Event::RunSearch(s) => {
+                display.clear_search();
+                timer_w.send(TimerAction::Search(s)).await?;
+            }
             Event::Quit => {
                 break;
             }
         }
-        display.render(&current_screen, &mut output).await?;
+        display.render(&mut output).await?;
     }
 
     Ok(())

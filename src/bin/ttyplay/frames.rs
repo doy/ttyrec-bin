@@ -44,6 +44,15 @@ impl FrameData {
         self.frames.len()
     }
 
+    pub fn search(&self, start: usize, query: &str) -> Option<usize> {
+        for (idx, frame) in self.frames.iter().enumerate().skip(start) {
+            if frame.screen.contents().contains(query) {
+                return Some(idx);
+            }
+        }
+        None
+    }
+
     pub async fn add_frame(&mut self, frame: Frame) {
         self.frames.push(frame);
         self.new_frame_w
