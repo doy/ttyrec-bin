@@ -1,6 +1,8 @@
 pub enum Event {
-    Render(vt100::Screen),
+    Render((usize, vt100::Screen)),
     Key(textmode::Key),
+    FrameLoaded(Option<usize>),
     Pause,
+    Paused(bool),
     Quit,
 }

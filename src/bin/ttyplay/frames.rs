@@ -40,6 +40,10 @@ impl FrameData {
         self.frames.get(i)
     }
 
+    pub fn count(&self) -> usize {
+        self.frames.len()
+    }
+
     pub async fn add_frame(&mut self, frame: Frame) {
         self.frames.push(frame);
         self.new_frame_w
