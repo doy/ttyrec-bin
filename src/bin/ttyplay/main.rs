@@ -1,5 +1,9 @@
 use async_std::prelude::FutureExt as _;
-use textmode::Textmode as _;
+
+mod display;
+mod event;
+mod frames;
+mod input;
 
 #[derive(Debug, structopt::StructOpt)]
 #[structopt(about = "ttyplay")]
@@ -8,85 +12,21 @@ struct Opt {
     file: std::ffi::OsString,
 }
 
-#[derive(Debug, Clone)]
-struct Frame {
-    screen: vt100::Screen,
-    delay: std::time::Duration,
-}
-
-struct FrameData {
-    frames: Vec<Frame>,
-    done_reading: bool,
-    new_frame_w: async_std::channel::Sender<Option<usize>>,
-    new_frame_r: async_std::channel::Receiver<Option<usize>>,
-}
-
-impl FrameData {
-    fn new() -> Self {
-        let (new_frame_w, new_frame_r) = async_std::channel::unbounded();
-        Self {
-            frames: vec![],
-            done_reading: false,
-            new_frame_w,
-            new_frame_r,
-        }
-    }
-
-    fn get(&self, i: usize) -> Option<&Frame> {
-        self.frames.get(i)
-    }
-
-    async fn add_frame(&mut self, frame: Frame) {
-        self.frames.push(frame);
-        self.new_frame_w
-            .send(Some(self.frames.len()))
-            .await
-            .unwrap()
-    }
-
-    async fn done_reading(&mut self) {
-        self.done_reading = true;
-        self.new_frame_w.send(None).await.unwrap();
-    }
-
-    fn wait_for_frame(
-        &self,
-        i: usize,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = bool> + 'static + Send>,
-    > {
-        if i < self.frames.len() {
-            return Box::pin(std::future::ready(true));
-        }
-        let new_frame_r = self.new_frame_r.clone();
-        Box::pin(async move {
-            while let Some(new_len) = new_frame_r.recv().await.unwrap() {
-                if i < new_len {
-                    return true;
-                }
-            }
-            false
-        })
-    }
-}
-
-enum Event {
-    Render { screen: vt100::Screen },
-    Key(textmode::Key),
+enum TimerAction {
+    Pause,
     Quit,
 }
 
-enum TimerAction {
-    Pause,
-}
-
 fn spawn_frame_reader_task(
-    frames: async_std::sync::Arc<async_std::sync::Mutex<FrameData>>,
-    size: (u16, u16),
+    frames: async_std::sync::Arc<async_std::sync::Mutex<frames::FrameData>>,
     fh: async_std::fs::File,
 ) {
     async_std::task::spawn(async move {
         let mut reader = ttyrec::Reader::new(fh);
+        let size = terminal_size::terminal_size().map_or(
+            (24, 80),
+            |(terminal_size::Width(w), terminal_size::Height(h))| (h, w),
+        );
         let mut parser = vt100::Parser::new(size.0, size.1, 0);
         while let Ok(frame) = reader.read_frame().await {
             let delay = if let Some(time) = reader.offset() {
@@ -98,10 +38,7 @@ fn spawn_frame_reader_task(
             frames
                 .lock_arc()
                 .await
-                .add_frame(Frame {
-                    screen: parser.screen().clone(),
-                    delay,
-                })
+                .add_frame(frames::Frame::new(parser.screen().clone(), delay))
                 .await;
         }
         frames.lock_arc().await.done_reading().await;
@@ -109,10 +46,10 @@ fn spawn_frame_reader_task(
 }
 
 fn spawn_timer_task(
-    frames: async_std::sync::Arc<async_std::sync::Mutex<FrameData>>,
+    event_w: async_std::channel::Sender<event::Event>,
+    frames: async_std::sync::Arc<async_std::sync::Mutex<frames::FrameData>>,
     timer_r: async_std::channel::Receiver<TimerAction>,
-    event_w: async_std::channel::Sender<Event>,
-) {
+) -> async_std::task::JoinHandle<()> {
     async_std::task::spawn(async move {
         let mut idx = 0;
         let mut start_time = std::time::Instant::now();
@@ -134,13 +71,13 @@ fn spawn_timer_task(
                         let frame =
                             frames.lock_arc().await.get(idx).unwrap().clone();
                         async_std::task::sleep(
-                            (start_time + frame.delay)
+                            (start_time + frame.delay())
                                 .saturating_duration_since(
                                     std::time::Instant::now(),
                                 ),
                         )
                         .await;
-                        Res::Wait(Some(frame.screen))
+                        Res::Wait(Some(frame.into_screen()))
                     } else {
                         Res::Wait(None)
                     }
@@ -149,10 +86,14 @@ fn spawn_timer_task(
             let action = async { Res::TimerAction(timer_r.recv().await) };
             match wait.race(action).await {
                 Res::Wait(Some(screen)) => {
-                    event_w.send(Event::Render { screen }).await.unwrap();
+                    event_w.send(event::Event::Render(screen)).await.unwrap();
                     idx += 1;
                 }
-                Res::Wait(None) => break,
+                Res::Wait(None) => {
+                    if paused_time.is_none() {
+                        paused_time = Some(std::time::Instant::now());
+                    }
+                }
                 Res::TimerAction(Ok(action)) => match action {
                     TimerAction::Pause => {
                         let now = std::time::Instant::now();
@@ -162,21 +103,21 @@ fn spawn_timer_task(
                             paused_time = Some(now);
                         }
                     }
+                    TimerAction::Quit => break,
                 },
-                Res::TimerAction(Err(_)) => break,
+                Res::TimerAction(Err(e)) => panic!("{}", e),
             }
         }
-        event_w.send(Event::Quit).await.unwrap();
-    });
+    })
 }
 
 fn spawn_input_task(
+    event_w: async_std::channel::Sender<event::Event>,
     mut input: textmode::Input,
-    event_w: async_std::channel::Sender<Event>,
 ) {
     async_std::task::spawn(async move {
         while let Some(key) = input.read_key().await.unwrap() {
-            event_w.send(Event::Key(key)).await.unwrap();
+            event_w.send(event::Event::Key(key)).await.unwrap();
         }
     });
 }
@@ -185,10 +126,6 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
     let Opt { file } = opt;
 
     let fh = async_std::fs::File::open(file).await?;
-    let size = terminal_size::terminal_size().map_or(
-        (24, 80),
-        |(terminal_size::Width(w), terminal_size::Height(h))| (h, w),
-    );
 
     let mut input = textmode::Input::new().await?;
     let mut output = textmode::Output::new().await?;
@@ -196,34 +133,35 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
     let _output_guard = output.take_screen_guard();
 
     let frames = async_std::sync::Arc::new(async_std::sync::Mutex::new(
-        FrameData::new(),
+        frames::FrameData::new(),
     ));
     let (event_w, event_r) = async_std::channel::unbounded();
     let (timer_w, timer_r) = async_std::channel::unbounded();
 
-    spawn_frame_reader_task(frames.clone(), size, fh);
-    spawn_timer_task(frames.clone(), timer_r, event_w.clone());
-    spawn_input_task(input, event_w.clone());
+    spawn_frame_reader_task(frames.clone(), fh);
+    spawn_input_task(event_w.clone(), input);
+    let timer_task =
+        spawn_timer_task(event_w.clone(), frames.clone(), timer_r);
 
+    let display = display::Display::new();
     loop {
         let event = event_r.recv().await?;
         match event {
-            Event::Render { screen } => {
-                output.clear();
-                output.move_to(0, 0);
-                output.write(&screen.contents_formatted());
-                output.refresh().await?;
+            event::Event::Render(screen) => {
+                display.render(&screen, &mut output).await?;
             }
-            Event::Key(key) => match key {
-                textmode::Key::Char('q') => break,
-                textmode::Key::Char(' ') => {
-                    timer_w.send(TimerAction::Pause).await.unwrap();
-                }
-                _ => {}
-            },
-            Event::Quit => break,
+            event::Event::Key(key) => {
+                input::handle_input(key, event_w.clone()).await?
+            }
+            event::Event::Pause => timer_w.send(TimerAction::Pause).await?,
+            event::Event::Quit => {
+                timer_w.send(TimerAction::Quit).await?;
+                break;
+            }
         }
     }
+
+    timer_task.await;
 
     Ok(())
 }
