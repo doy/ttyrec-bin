@@ -30,6 +30,7 @@ pub fn spawn_task(
                         event_w
                             .send(crate::event::Event::RunSearch(
                                 search_contents.clone(),
+                                false,
                             ))
                             .await
                             .unwrap();
@@ -100,7 +101,20 @@ pub fn spawn_task(
                     }
                     textmode::Key::Char('n') => {
                         if let Some(ref search) = prev_search {
-                            crate::event::Event::RunSearch(search.clone())
+                            crate::event::Event::RunSearch(
+                                search.clone(),
+                                false,
+                            )
+                        } else {
+                            continue;
+                        }
+                    }
+                    textmode::Key::Char('p') => {
+                        if let Some(ref search) = prev_search {
+                            crate::event::Event::RunSearch(
+                                search.clone(),
+                                true,
+                            )
                         } else {
                             continue;
                         }

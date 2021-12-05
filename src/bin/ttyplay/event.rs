@@ -7,7 +7,7 @@ pub enum Event {
     ToggleHelp,
     ActiveSearch(String),
     CancelSearch,
-    RunSearch(String),
+    RunSearch(String, bool),
     Quit,
 }
 
@@ -20,7 +20,7 @@ pub enum TimerAction {
     SpeedUp,
     SlowDown,
     DefaultSpeed,
-    Search(String),
+    Search(String, bool),
     Quit,
 }
 
@@ -78,7 +78,7 @@ struct Pending {
     toggle_help: bool,
     active_search: Option<String>,
     cancel_search: bool,
-    run_search: Option<String>,
+    run_search: Option<(String, bool)>,
     quit: bool,
 }
 
@@ -121,10 +121,10 @@ impl Pending {
                 self.cancel_search = true;
                 self.run_search = None;
             }
-            Event::RunSearch(s) => {
+            Event::RunSearch(s, backwards) => {
                 self.active_search = None;
                 self.cancel_search = false;
-                self.run_search = Some(s);
+                self.run_search = Some((s, backwards));
             }
             Event::Quit => {
                 self.quit = true;
@@ -157,8 +157,8 @@ impl Pending {
         } else if self.cancel_search {
             self.cancel_search = false;
             Some(Event::CancelSearch)
-        } else if let Some(run_search) = self.run_search.take() {
-            Some(Event::RunSearch(run_search))
+        } else if let Some((run_search, backwards)) = self.run_search.take() {
+            Some(Event::RunSearch(run_search, backwards))
         } else if self.toggle_ui {
             self.toggle_ui = false;
             Some(Event::ToggleUi)
@@ -219,9 +219,9 @@ pub async fn handle_events(
             Event::CancelSearch => {
                 display.clear_search();
             }
-            Event::RunSearch(s) => {
+            Event::RunSearch(s, backwards) => {
                 display.clear_search();
-                timer_w.send(TimerAction::Search(s)).await?;
+                timer_w.send(TimerAction::Search(s, backwards)).await?;
             }
             Event::Quit => {
                 break;

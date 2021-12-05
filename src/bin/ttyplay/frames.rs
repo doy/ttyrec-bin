@@ -44,13 +44,28 @@ impl FrameData {
         self.frames.len()
     }
 
-    pub fn search(&self, start: usize, query: &str) -> Option<usize> {
-        for (idx, frame) in self.frames.iter().enumerate().skip(start) {
-            if frame.screen.contents().contains(query) {
-                return Some(idx);
-            }
+    pub fn search(
+        &self,
+        start: usize,
+        query: &str,
+        backwards: bool,
+    ) -> Option<usize> {
+        if backwards {
+            self.frames
+                .iter()
+                .enumerate()
+                .rev()
+                .skip(self.frames.len() - start + 1)
+                .find(|(_, frame)| frame.screen.contents().contains(query))
+                .map(|(i, _)| i)
+        } else {
+            self.frames
+                .iter()
+                .enumerate()
+                .skip(start)
+                .find(|(_, frame)| frame.screen.contents().contains(query))
+                .map(|(i, _)| i)
         }
-        None
     }
 
     pub async fn add_frame(&mut self, frame: Frame) {

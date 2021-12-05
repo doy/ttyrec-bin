@@ -138,9 +138,9 @@ pub fn spawn_task(
                             - (((now - start_time) * 16) / playback_ratio);
                         playback_ratio = 16;
                     }
-                    crate::event::TimerAction::Search(s) => {
+                    crate::event::TimerAction::Search(s, backwards) => {
                         if let Some(new_idx) =
-                            frames.lock_arc().await.search(idx + 1, &s)
+                            frames.lock_arc().await.search(idx, &s, backwards)
                         {
                             idx = new_idx;
                             force_update_time = true;
