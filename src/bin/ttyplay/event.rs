@@ -4,5 +4,9 @@ pub enum Event {
     FrameLoaded(Option<usize>),
     Pause,
     Paused(bool),
+    FirstFrame,
+    LastFrame,
+    NextFrame,
+    PreviousFrame,
     Quit,
 }

@@ -14,6 +14,7 @@ struct Opt {
 
 enum TimerAction {
     Pause,
+    GotoFrame(usize),
     Quit,
 }
 
@@ -59,6 +60,7 @@ fn spawn_timer_task(
         let mut idx = 0;
         let mut start_time = std::time::Instant::now();
         let mut paused_time = None;
+        let mut force_update_time = false;
         loop {
             enum Res {
                 Wait(Option<vt100::Screen>),
@@ -67,14 +69,20 @@ fn spawn_timer_task(
                 ),
             }
             let wait = async {
-                if paused_time.is_some() {
-                    std::future::pending().await
-                } else {
-                    let wait_read =
-                        frames.lock_arc().await.wait_for_frame(idx);
-                    if wait_read.await {
-                        let frame =
-                            frames.lock_arc().await.get(idx).unwrap().clone();
+                let wait_read = frames.lock_arc().await.wait_for_frame(idx);
+                if wait_read.await {
+                    let frame =
+                        frames.lock_arc().await.get(idx).unwrap().clone();
+                    if force_update_time {
+                        let now = std::time::Instant::now();
+                        start_time = now - frame.delay();
+                        if paused_time.take().is_some() {
+                            paused_time = Some(now)
+                        }
+                        force_update_time = false;
+                    } else if paused_time.is_some() {
+                        std::future::pending::<()>().await;
+                    } else {
                         async_std::task::sleep(
                             (start_time + frame.delay())
                                 .saturating_duration_since(
@@ -82,10 +90,10 @@ fn spawn_timer_task(
                                 ),
                         )
                         .await;
-                        Res::Wait(Some(frame.into_screen()))
-                    } else {
-                        Res::Wait(None)
                     }
+                    Res::Wait(Some(frame.into_screen()))
+                } else {
+                    Res::Wait(None)
                 }
             };
             let action = async { Res::TimerAction(timer_r.recv().await) };
@@ -112,6 +120,10 @@ fn spawn_timer_task(
                             .send(event::Event::Paused(paused_time.is_some()))
                             .await
                             .unwrap();
+                    }
+                    TimerAction::GotoFrame(new_idx) => {
+                        idx = new_idx;
+                        force_update_time = true;
                     }
                     TimerAction::Quit => break,
                 },
@@ -178,6 +190,30 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
             event::Event::Paused(paused) => {
                 display.paused(paused);
                 display.render(&current_screen, &mut output).await?;
+            }
+            event::Event::FirstFrame => {
+                timer_w.send(TimerAction::GotoFrame(0)).await?;
+            }
+            event::Event::LastFrame => {
+                timer_w
+                    .send(TimerAction::GotoFrame(
+                        display.get_total_frames() - 1,
+                    ))
+                    .await?;
+            }
+            event::Event::NextFrame => {
+                timer_w
+                    .send(TimerAction::GotoFrame(
+                        display.get_current_frame() + 1,
+                    ))
+                    .await?;
+            }
+            event::Event::PreviousFrame => {
+                timer_w
+                    .send(TimerAction::GotoFrame(
+                        display.get_current_frame() - 1,
+                    ))
+                    .await?;
             }
             event::Event::Quit => {
                 timer_w.send(TimerAction::Quit).await?;

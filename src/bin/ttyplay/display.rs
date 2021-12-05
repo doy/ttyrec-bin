@@ -21,8 +21,16 @@ impl Display {
         self.current_frame = idx;
     }
 
+    pub fn get_current_frame(&self) -> usize {
+        self.current_frame
+    }
+
     pub fn total_frames(&mut self, n: usize) {
         self.total_frames = n;
+    }
+
+    pub fn get_total_frames(&self) -> usize {
+        self.total_frames
     }
 
     pub fn done_loading(&mut self) {
