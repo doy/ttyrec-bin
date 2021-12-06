@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.2] - 2021-12-06
+
+### Fixed
+
+* Bump vt100 dep to fix some display issues
+
 ## [0.1.1] - 2021-12-05
 
 ### Fixed

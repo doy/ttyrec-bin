@@ -1,6 +1,6 @@
 [package]
 name = "ttyrec-bin"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Jesse Luehrs <doy@tozt.net>"]
 edition = "2021"
 
@@ -21,6 +21,6 @@ signal-hook = "0.3.10"
 signal-hook-async-std = "0.2.1"
 structopt = { version = "0.3.25", features = ["paw", "wrap_help"] }
 terminal_size = "0.1.17"
-textmode = { version = "0.2.1", features = ["async"] }
+textmode = { version = "0.2.2", features = ["async"] }
 ttyrec = { version = "0.3.2", features = ["async"] }
-vt100 = "0.13.2"
+vt100 = "0.14.0"
