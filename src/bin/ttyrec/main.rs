@@ -8,11 +8,24 @@ use async_std::stream::StreamExt as _;
 use pty_process::Command as _;
 
 #[derive(Debug, structopt::StructOpt)]
-#[structopt(about = "ttyrec")]
+#[structopt(
+    name = "ttyrec",
+    about = "Records ttyrec files",
+    long_about = "\n\
+        This program will run a shell (or other program specified by the -c \
+        option), and record the full output, including timing information, \
+        for later playback (such as via the included `ttyplay` command)."
+)]
 struct Opt {
-    #[structopt(short, long, default_value = "ttyrec")]
+    #[structopt(
+        short,
+        long,
+        default_value = "ttyrec",
+        help = "File to save ttyrec data to"
+    )]
     file: std::ffi::OsString,
-    #[structopt(short, long)]
+
+    #[structopt(short, long, help = "Command to run [default: $SHELL]")]
     cmd: Option<std::ffi::OsString>,
 }
 

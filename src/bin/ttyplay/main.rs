@@ -11,18 +11,41 @@ mod input;
 mod timer;
 
 #[derive(Debug, structopt::StructOpt)]
-#[structopt(about = "ttyplay")]
+#[structopt(
+    name = "ttyplay",
+    about = "Plays back ttyrec files",
+    long_about = "\n\
+        This is a player for ttyrec files. It allows arbitrary seeking, both \
+        forward and backward, as well as searching through the file for \
+        output. Playback can be paused using the Space key, and the rest of \
+        the key bindings can be found by pressing `?` while the player is \
+        paused."
+)]
 struct Opt {
-    #[structopt(short, long, default_value = "ttyrec")]
+    #[structopt(
+        short,
+        long,
+        default_value = "ttyrec",
+        help = "File to read ttyrec data from"
+    )]
     file: std::ffi::OsString,
 
-    #[structopt(long)]
+    #[structopt(
+        long,
+        help = "Restrict time between frames to at most this many milliseconds"
+    )]
     clamp: Option<u64>,
 
-    #[structopt(short, long)]
+    #[structopt(short, long, help = "Start the player paused")]
     paused: bool,
 
-    #[structopt(short, long, default_value = "4")]
+    #[structopt(
+        short,
+        long,
+        default_value = "4",
+        help = "Speed to run the playback at. This can be a number from 0-8, \
+            where higher is faster."
+    )]
     speed: u32,
 }
 
