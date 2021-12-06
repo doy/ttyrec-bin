@@ -1,8 +1,14 @@
 [package]
 name = "ttyrec-bin"
 version = "0.1.0"
+authors = ["Jesse Luehrs <doy@tozt.net>"]
 edition = "2021"
 
+description = "record and play back ttyrec files"
+repository = "https://git.tozt.net/ttyrec-bin"
+readme = "README.md"
+keywords = ["ttyrec"]
+categories = ["command-line-utilities"]
 license = "MIT"
 
 [dependencies]
