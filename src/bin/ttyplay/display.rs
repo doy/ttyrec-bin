@@ -71,9 +71,8 @@ impl Display {
         &self,
         output: &mut textmode::Output,
     ) -> anyhow::Result<()> {
-        let pos = output.screen().cursor_position();
-
         self.render_screen(output);
+        let pos = output.screen().cursor_position();
 
         if self.paused && self.show_ui {
             self.render_frame_count(output);
