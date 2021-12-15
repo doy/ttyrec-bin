@@ -14,7 +14,7 @@ pub fn spawn_task(
                         .send(crate::event::Event::Error(anyhow::anyhow!(e)))
                         .await
                         // event_w is never closed, so this can never fail
-                        .unwrap_or_else(|_| unreachable!());
+                        .unwrap();
                     break;
                 }
             };
@@ -28,7 +28,7 @@ pub fn spawn_task(
                             ))
                             .await
                             // event_w is never closed, so this can never fail
-                            .unwrap_or_else(|_| unreachable!());
+                            .unwrap();
                     }
                     textmode::Key::Backspace => {
                         search_contents.pop();
@@ -38,7 +38,7 @@ pub fn spawn_task(
                             ))
                             .await
                             // event_w is never closed, so this can never fail
-                            .unwrap_or_else(|_| unreachable!());
+                            .unwrap();
                     }
                     textmode::Key::Ctrl(b'm') => {
                         event_w
@@ -48,7 +48,7 @@ pub fn spawn_task(
                             ))
                             .await
                             // event_w is never closed, so this can never fail
-                            .unwrap_or_else(|_| unreachable!());
+                            .unwrap();
                         prev_search = search;
                         search = None;
                     }
@@ -57,7 +57,7 @@ pub fn spawn_task(
                             .send(crate::event::Event::CancelSearch)
                             .await
                             // event_w is never closed, so this can never fail
-                            .unwrap_or_else(|_| unreachable!());
+                            .unwrap();
                         search = None;
                     }
                     _ => {}
@@ -138,7 +138,7 @@ pub fn spawn_task(
                     _ => continue,
                 };
                 // event_w is never closed, so this can never fail
-                event_w.send(event).await.unwrap_or_else(|_| unreachable!());
+                event_w.send(event).await.unwrap();
             }
         }
     });

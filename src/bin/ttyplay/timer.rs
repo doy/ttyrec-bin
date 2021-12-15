@@ -17,7 +17,7 @@ pub fn spawn_task(
                 .send(crate::event::Event::Paused(true))
                 .await
                 // event_w is never closed, so this can never fail
-                .unwrap_or_else(|_| unreachable!());
+                .unwrap();
             Some(start_time)
         } else {
             None
@@ -77,7 +77,7 @@ pub fn spawn_task(
                         )))
                         .await
                         // event_w is never closed, so this can never fail
-                        .unwrap_or_else(|_| unreachable!());
+                        .unwrap();
                     idx += 1;
                 }
                 Res::Wait(None) => {
@@ -87,7 +87,7 @@ pub fn spawn_task(
                         .send(crate::event::Event::Paused(true))
                         .await
                         // event_w is never closed, so this can never fail
-                        .unwrap_or_else(|_| unreachable!());
+                        .unwrap();
                 }
                 Res::TimerAction(Ok(action)) => match action {
                     crate::event::TimerAction::Pause => {
@@ -103,7 +103,7 @@ pub fn spawn_task(
                             ))
                             .await
                             // event_w is never closed, so this can never fail
-                            .unwrap_or_else(|_| unreachable!());
+                            .unwrap();
                     }
                     crate::event::TimerAction::FirstFrame => {
                         idx = 0;
@@ -134,7 +134,7 @@ pub fn spawn_task(
                                 .await
                                 // event_w is never closed, so this can never
                                 // fail
-                                .unwrap_or_else(|_| unreachable!());
+                                .unwrap();
                         }
                     }
                     crate::event::TimerAction::SlowDown => {
@@ -149,7 +149,7 @@ pub fn spawn_task(
                                 .await
                                 // event_w is never closed, so this can never
                                 // fail
-                                .unwrap_or_else(|_| unreachable!());
+                                .unwrap();
                         }
                     }
                     crate::event::TimerAction::DefaultSpeed => {
@@ -161,7 +161,7 @@ pub fn spawn_task(
                             .send(crate::event::Event::Speed(playback_ratio))
                             .await
                             // event_w is never closed, so this can never fail
-                            .unwrap_or_else(|_| unreachable!());
+                            .unwrap();
                     }
                     crate::event::TimerAction::Search(s, backwards) => {
                         if let Some(new_idx) =

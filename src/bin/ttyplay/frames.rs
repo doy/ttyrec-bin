@@ -74,7 +74,7 @@ impl FrameData {
             .send(Some(self.frames.len()))
             .await
             // new_frame_w is never closed, so this can never fail
-            .unwrap_or_else(|_| unreachable!());
+            .unwrap();
     }
 
     pub async fn done_reading(&mut self) {
@@ -83,7 +83,7 @@ impl FrameData {
             .send(None)
             .await
             // new_frame_w is never closed, so this can never fail
-            .unwrap_or_else(|_| unreachable!());
+            .unwrap();
     }
 
     pub fn wait_for_frame(
@@ -104,7 +104,7 @@ impl FrameData {
                 .recv()
                 .await
                 // new_frame_r is never closed, so this can never fail
-                .unwrap_or_else(|_| unreachable!())
+                .unwrap()
             {
                 if i < new_len {
                     return true;
@@ -152,7 +152,7 @@ pub fn load_from_file(
                 .send(crate::event::Event::FrameLoaded(Some(frames.count())))
                 .await
                 // event_w is never closed, so this can never fail
-                .unwrap_or_else(|_| unreachable!());
+                .unwrap();
             prev_delay = delay;
         }
         frames.lock_arc().await.done_reading().await;
@@ -160,6 +160,6 @@ pub fn load_from_file(
             .send(crate::event::Event::FrameLoaded(None))
             .await
             // event_w is never closed, so this can never fail
-            .unwrap_or_else(|_| unreachable!());
+            .unwrap();
     });
 }
