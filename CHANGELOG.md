@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.3] - 2021-12-15
+
+### Changed
+
+* Various internal cleanups
+
 ## [0.1.2] - 2021-12-06
 
 ### Fixed
