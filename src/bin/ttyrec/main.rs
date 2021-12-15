@@ -1,5 +1,15 @@
+#![warn(clippy::cargo)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
+#![warn(clippy::unwrap_used)]
+#![warn(clippy::expect_used)]
+#![warn(clippy::indexing_slicing)]
+#![warn(clippy::as_conversions)]
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::missing_const_for_fn)]
+#![allow(clippy::similar_names)]
+#![allow(clippy::struct_excessive_bools)]
+#![allow(clippy::too_many_arguments)]
 #![allow(clippy::too_many_lines)]
 
 use async_std::io::{ReadExt as _, WriteExt as _};
@@ -32,21 +42,25 @@ struct Opt {
 fn get_cmd(
     cmd: Option<std::ffi::OsString>,
 ) -> (std::ffi::OsString, Vec<std::ffi::OsString>) {
-    if let Some(cmd) = cmd {
-        let mut exec_cmd = std::ffi::OsString::from("exec ");
-        exec_cmd.push(cmd);
-        ("/bin/sh".into(), vec!["-c".into(), exec_cmd])
-    } else {
-        let shell =
-            std::env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
-        (shell, vec![])
-    }
+    cmd.map_or_else(
+        || {
+            let shell =
+                std::env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
+            (shell, vec![])
+        },
+        |cmd| {
+            let mut exec_cmd = std::ffi::OsString::from("exec ");
+            exec_cmd.push(cmd);
+            ("/bin/sh".into(), vec!["-c".into(), exec_cmd])
+        },
+    )
 }
 
 enum Event {
     Key(textmode::Result<Option<textmode::Key>>),
     Stdout(std::io::Result<Vec<u8>>),
     Resize((u16, u16)),
+    Error(anyhow::Error),
 }
 
 async fn resize(event_w: &async_std::channel::Sender<Event>) {
@@ -54,7 +68,11 @@ async fn resize(event_w: &async_std::channel::Sender<Event>) {
         (24, 80),
         |(terminal_size::Width(w), terminal_size::Height(h))| (h, w),
     );
-    event_w.send(Event::Resize(size)).await.unwrap();
+    event_w
+        .send(Event::Resize(size))
+        .await
+        // event_w is never closed, so this can never fail
+        .unwrap_or_else(|_| unreachable!());
 }
 
 async fn async_main(opt: Opt) -> anyhow::Result<()> {
@@ -96,7 +114,8 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                 event_w
                     .send(Event::Key(input.read_key().await))
                     .await
-                    .unwrap();
+                    // event_w is never closed, so this can never fail
+                    .unwrap_or_else(|_| unreachable!());
             }
         });
     }
@@ -117,24 +136,42 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                 let resize = async { Res::Resize(resize_r.recv().await) };
                 match read.race(write).race(resize).await {
                     Res::Read(res) => {
-                        let res = res.map(|n| buf[..n].to_vec());
+                        let res = res.map(|n| buf.get(..n).unwrap().to_vec());
                         let err = res.is_err();
-                        event_w.send(Event::Stdout(res)).await.unwrap();
+                        event_w
+                            .send(Event::Stdout(res))
+                            .await
+                            // event_w is never closed, so this can never fail
+                            .unwrap_or_else(|_| unreachable!());
                         if err {
                             break;
                         }
                     }
                     Res::Write(res) => {
-                        let bytes = res.unwrap();
-                        pty.write(&bytes).await.unwrap();
+                        // input_r is never closed, so this can never fail
+                        let bytes = res.unwrap_or_else(|_| unreachable!());
+                        if let Err(e) = pty.write(&bytes).await {
+                            event_w
+                                .send(Event::Error(anyhow::anyhow!(e)))
+                                .await
+                                // event_w is never closed, so this can never
+                                // fail
+                                .unwrap_or_else(|_| unreachable!());
+                        }
                     }
                     Res::Resize(res) => {
-                        let size = res.unwrap();
-                        child
-                            .resize_pty(&pty_process::Size::new(
-                                size.0, size.1,
-                            ))
-                            .unwrap();
+                        // resize_r is never closed, so this can never fail
+                        let size = res.unwrap_or_else(|_| unreachable!());
+                        if let Err(e) = child.resize_pty(
+                            &pty_process::Size::new(size.0, size.1),
+                        ) {
+                            event_w
+                                .send(Event::Error(anyhow::anyhow!(e)))
+                                .await
+                                // event_w is never closed, so this can never
+                                // fail
+                                .unwrap_or_else(|_| unreachable!());
+                        }
                     }
                 }
             }
@@ -169,6 +206,9 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
             },
             Event::Resize((h, w)) => {
                 resize_w.send((h, w)).await?;
+            }
+            Event::Error(e) => {
+                return Err(e);
             }
         }
     }
