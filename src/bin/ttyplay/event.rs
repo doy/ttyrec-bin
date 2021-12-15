@@ -1,5 +1,5 @@
 pub enum Event {
-    FrameTransition((usize, vt100::Screen)),
+    FrameTransition((usize, Box<vt100::Screen>)),
     FrameLoaded(Option<usize>),
     Paused(bool),
     Speed(u32),
@@ -9,6 +9,7 @@ pub enum Event {
     ActiveSearch(String),
     CancelSearch,
     RunSearch(String, bool),
+    Error(anyhow::Error),
     Quit,
 }
 
@@ -70,7 +71,7 @@ impl Reader {
 
 #[derive(Default)]
 struct Pending {
-    render: Option<(usize, vt100::Screen)>,
+    render: Option<(usize, Box<vt100::Screen>)>,
     frame_loaded: Option<usize>,
     done_loading: bool,
     paused: Option<bool>,
@@ -81,6 +82,7 @@ struct Pending {
     active_search: Option<String>,
     cancel_search: bool,
     run_search: Option<(String, bool)>,
+    error: Option<anyhow::Error>,
     quit: bool,
 }
 
@@ -131,6 +133,9 @@ impl Pending {
                 self.cancel_search = false;
                 self.run_search = Some((s, backwards));
             }
+            Event::Error(e) => {
+                self.error = Some(e);
+            }
             Event::Quit => {
                 self.quit = true;
             }
@@ -149,11 +154,14 @@ impl Pending {
             || self.active_search.is_some()
             || self.cancel_search
             || self.run_search.is_some()
+            || self.error.is_some()
             || self.quit
     }
 
     fn get_event(&mut self) -> Option<Event> {
-        if self.quit {
+        if let Some(e) = self.error.take() {
+            Some(Event::Error(e))
+        } else if self.quit {
             self.quit = false;
             Some(Event::Quit)
         } else if let Some(action) = self.timer_actions.pop_front() {
@@ -202,7 +210,7 @@ pub async fn handle_events(
                 continue;
             }
             Event::FrameTransition((idx, screen)) => {
-                display.screen(screen);
+                display.screen(*screen);
                 display.current_frame(idx);
             }
             Event::FrameLoaded(n) => {
@@ -233,6 +241,9 @@ pub async fn handle_events(
             Event::RunSearch(s, backwards) => {
                 display.clear_search();
                 timer_w.send(TimerAction::Search(s, backwards)).await?;
+            }
+            Event::Error(e) => {
+                return Err(e);
             }
             Event::Quit => {
                 break;

@@ -16,7 +16,8 @@ pub fn spawn_task(
             event_w
                 .send(crate::event::Event::Paused(true))
                 .await
-                .unwrap();
+                // event_w is never closed, so this can never fail
+                .unwrap_or_else(|_| unreachable!());
             Some(start_time)
         } else {
             None
@@ -25,7 +26,7 @@ pub fn spawn_task(
         let mut playback_ratio = 2_u32.pow(speed);
         loop {
             enum Res {
-                Wait(Option<vt100::Screen>),
+                Wait(Option<Box<vt100::Screen>>),
                 TimerAction(
                     Result<
                         crate::event::TimerAction,
@@ -62,7 +63,7 @@ pub fn spawn_task(
                         )
                         .await;
                     }
-                    Res::Wait(Some(frame.into_screen()))
+                    Res::Wait(Some(Box::new(frame.into_screen())))
                 } else {
                     Res::Wait(None)
                 }
@@ -75,7 +76,8 @@ pub fn spawn_task(
                             idx, screen,
                         )))
                         .await
-                        .unwrap();
+                        // event_w is never closed, so this can never fail
+                        .unwrap_or_else(|_| unreachable!());
                     idx += 1;
                 }
                 Res::Wait(None) => {
@@ -84,7 +86,8 @@ pub fn spawn_task(
                     event_w
                         .send(crate::event::Event::Paused(true))
                         .await
-                        .unwrap();
+                        // event_w is never closed, so this can never fail
+                        .unwrap_or_else(|_| unreachable!());
                 }
                 Res::TimerAction(Ok(action)) => match action {
                     crate::event::TimerAction::Pause => {
@@ -99,7 +102,8 @@ pub fn spawn_task(
                                 paused_time.is_some(),
                             ))
                             .await
-                            .unwrap();
+                            // event_w is never closed, so this can never fail
+                            .unwrap_or_else(|_| unreachable!());
                     }
                     crate::event::TimerAction::FirstFrame => {
                         idx = 0;
@@ -128,7 +132,9 @@ pub fn spawn_task(
                                     playback_ratio,
                                 ))
                                 .await
-                                .unwrap();
+                                // event_w is never closed, so this can never
+                                // fail
+                                .unwrap_or_else(|_| unreachable!());
                         }
                     }
                     crate::event::TimerAction::SlowDown => {
@@ -141,7 +147,9 @@ pub fn spawn_task(
                                     playback_ratio,
                                 ))
                                 .await
-                                .unwrap();
+                                // event_w is never closed, so this can never
+                                // fail
+                                .unwrap_or_else(|_| unreachable!());
                         }
                     }
                     crate::event::TimerAction::DefaultSpeed => {
@@ -152,7 +160,8 @@ pub fn spawn_task(
                         event_w
                             .send(crate::event::Event::Speed(playback_ratio))
                             .await
-                            .unwrap();
+                            // event_w is never closed, so this can never fail
+                            .unwrap_or_else(|_| unreachable!());
                     }
                     crate::event::TimerAction::Search(s, backwards) => {
                         if let Some(new_idx) =

@@ -188,7 +188,9 @@ impl Display {
             output.move_to(size.0 - 1, 0);
             output.write_str("/");
             output.write_str(search);
-            output.write_str(&" ".repeat(size.1 as usize - search.len() - 1));
+            output.write_str(
+                &" ".repeat(usize::from(size.1) - search.len() - 1),
+            );
         }
     }
 }

@@ -5,7 +5,19 @@ pub fn spawn_task(
     async_std::task::spawn(async move {
         let mut search: Option<String> = None;
         let mut prev_search = None;
-        while let Some(key) = input.read_key().await.unwrap() {
+        loop {
+            let key = match input.read_key().await {
+                Ok(Some(key)) => key,
+                Ok(None) => break,
+                Err(e) => {
+                    event_w
+                        .send(crate::event::Event::Error(anyhow::anyhow!(e)))
+                        .await
+                        // event_w is never closed, so this can never fail
+                        .unwrap_or_else(|_| unreachable!());
+                    break;
+                }
+            };
             if let Some(ref mut search_contents) = search {
                 match key {
                     textmode::Key::Char(c) => {
@@ -15,7 +27,8 @@ pub fn spawn_task(
                                 search_contents.clone(),
                             ))
                             .await
-                            .unwrap();
+                            // event_w is never closed, so this can never fail
+                            .unwrap_or_else(|_| unreachable!());
                     }
                     textmode::Key::Backspace => {
                         search_contents.pop();
@@ -24,7 +37,8 @@ pub fn spawn_task(
                                 search_contents.clone(),
                             ))
                             .await
-                            .unwrap();
+                            // event_w is never closed, so this can never fail
+                            .unwrap_or_else(|_| unreachable!());
                     }
                     textmode::Key::Ctrl(b'm') => {
                         event_w
@@ -33,7 +47,8 @@ pub fn spawn_task(
                                 false,
                             ))
                             .await
-                            .unwrap();
+                            // event_w is never closed, so this can never fail
+                            .unwrap_or_else(|_| unreachable!());
                         prev_search = search;
                         search = None;
                     }
@@ -41,7 +56,8 @@ pub fn spawn_task(
                         event_w
                             .send(crate::event::Event::CancelSearch)
                             .await
-                            .unwrap();
+                            // event_w is never closed, so this can never fail
+                            .unwrap_or_else(|_| unreachable!());
                         search = None;
                     }
                     _ => {}
@@ -121,7 +137,8 @@ pub fn spawn_task(
                     }
                     _ => continue,
                 };
-                event_w.send(event).await.unwrap();
+                // event_w is never closed, so this can never fail
+                event_w.send(event).await.unwrap_or_else(|_| unreachable!());
             }
         }
     });

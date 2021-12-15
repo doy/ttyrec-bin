@@ -73,12 +73,17 @@ impl FrameData {
         self.new_frame_w
             .send(Some(self.frames.len()))
             .await
-            .unwrap();
+            // new_frame_w is never closed, so this can never fail
+            .unwrap_or_else(|_| unreachable!());
     }
 
     pub async fn done_reading(&mut self) {
         self.done_reading = true;
-        self.new_frame_w.send(None).await.unwrap();
+        self.new_frame_w
+            .send(None)
+            .await
+            // new_frame_w is never closed, so this can never fail
+            .unwrap_or_else(|_| unreachable!());
     }
 
     pub fn wait_for_frame(
@@ -95,7 +100,12 @@ impl FrameData {
         }
         let new_frame_r = self.new_frame_r.clone();
         Box::pin(async move {
-            while let Some(new_len) = new_frame_r.recv().await.unwrap() {
+            while let Some(new_len) = new_frame_r
+                .recv()
+                .await
+                // new_frame_r is never closed, so this can never fail
+                .unwrap_or_else(|_| unreachable!())
+            {
                 if i < new_len {
                     return true;
                 }
@@ -141,13 +151,15 @@ pub fn load_from_file(
             event_w
                 .send(crate::event::Event::FrameLoaded(Some(frames.count())))
                 .await
-                .unwrap();
+                // event_w is never closed, so this can never fail
+                .unwrap_or_else(|_| unreachable!());
             prev_delay = delay;
         }
         frames.lock_arc().await.done_reading().await;
         event_w
             .send(crate::event::Event::FrameLoaded(None))
             .await
-            .unwrap();
+            // event_w is never closed, so this can never fail
+            .unwrap_or_else(|_| unreachable!());
     });
 }
