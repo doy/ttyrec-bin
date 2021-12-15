@@ -63,30 +63,20 @@ enum Event {
     Error(anyhow::Error),
 }
 
-async fn resize(event_w: &async_std::channel::Sender<Event>) {
-    let size = terminal_size::terminal_size().map_or(
-        (24, 80),
-        |(terminal_size::Width(w), terminal_size::Height(h))| (h, w),
-    );
-    event_w
-        .send(Event::Resize(size))
-        .await
-        // event_w is never closed, so this can never fail
-        .unwrap_or_else(|_| unreachable!());
-}
-
 async fn async_main(opt: Opt) -> anyhow::Result<()> {
     let Opt { cmd, file } = opt;
     let (cmd, args) = get_cmd(cmd);
 
+    let fh = async_std::fs::File::create(file).await?;
+
+    let mut input = textmode::Input::new().await?;
+    let _input_guard = input.take_raw_guard();
+    let mut stdout = async_std::io::stdout();
+
     let size = terminal_size::terminal_size().map_or(
         (24, 80),
         |(terminal_size::Width(w), terminal_size::Height(h))| (h, w),
     );
-    let fh = async_std::fs::File::create(file).await?;
-    let mut input = textmode::Input::new().await?;
-    let _input_guard = input.take_raw_guard();
-    let mut stdout = async_std::io::stdout();
     let child = async_std::process::Command::new(cmd)
         .args(args)
         .spawn_pty(Some(&pty_process::Size::new(size.0, size.1)))?;
@@ -102,7 +92,19 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
         let event_w = event_w.clone();
         async_std::task::spawn(async move {
             while signals.next().await.is_some() {
-                resize(&event_w).await;
+                event_w
+                    .send(Event::Resize(
+                        terminal_size::terminal_size().map_or(
+                            (24, 80),
+                            |(
+                                terminal_size::Width(w),
+                                terminal_size::Height(h),
+                            )| { (h, w) },
+                        ),
+                    ))
+                    .await
+                    // event_w is never closed, so this can never fail
+                    .unwrap_or_else(|_| unreachable!());
             }
         });
     }
@@ -177,8 +179,6 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
             }
         });
     }
-
-    resize(&event_w).await;
 
     let mut writer = ttyrec::Writer::new(fh);
     loop {
