@@ -84,11 +84,11 @@ pub fn spawn_task(
                     Some(action) => match action {
                         crate::event::TimerAction::Pause => {
                             let now = std::time::Instant::now();
-                            if let Some(time) = paused_time.take() {
-                                start_time += now - time;
-                            } else {
+                            paused_time.take().map_or_else(|| {
                                 paused_time = Some(now);
-                            }
+                            }, |time| {
+                                start_time += now - time;
+                            });
                             event_w
                                 .send(crate::event::Event::Paused(
                                     paused_time.is_some(),
