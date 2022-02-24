@@ -25,7 +25,7 @@ ttyrec = { version = "0.3.3", features = ["async"] }
 vt100 = "0.15.1"
 
 [patch.crates-io]
-nix = { path = "../src/nix" }
-pty-process = { path = "../pty-process" }
-textmode = { path = "../textmode" }
-ttyrec = { path = "../ttyrec" }
+nix = { git = "https://github.com/nix-rust/nix" }
+pty-process = { git = "https://github.com/doy/pty-process" }
+textmode = { git = "https://github.com/doy/textmode" }
+ttyrec = { git = "https://github.com/doy/ttyrec" }
