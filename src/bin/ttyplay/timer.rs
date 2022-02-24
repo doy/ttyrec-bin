@@ -1,21 +1,18 @@
-use async_std::prelude::FutureExt as _;
-
 pub fn spawn_task(
-    event_w: async_std::channel::Sender<crate::event::Event>,
-    frames: async_std::sync::Arc<
-        async_std::sync::Mutex<crate::frames::FrameData>,
+    event_w: tokio::sync::mpsc::UnboundedSender<crate::event::Event>,
+    frames: std::sync::Arc<tokio::sync::Mutex<crate::frames::FrameData>>,
+    mut timer_r: tokio::sync::mpsc::UnboundedReceiver<
+        crate::event::TimerAction,
     >,
-    timer_r: async_std::channel::Receiver<crate::event::TimerAction>,
     pause_at_start: bool,
     speed: u32,
-) -> async_std::task::JoinHandle<()> {
-    async_std::task::spawn(async move {
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
         let mut idx = 0;
         let mut start_time = std::time::Instant::now();
         let mut paused_time = if pause_at_start {
             event_w
                 .send(crate::event::Event::Paused(true))
-                .await
                 // event_w is never closed, so this can never fail
                 .unwrap();
             Some(start_time)
@@ -25,20 +22,17 @@ pub fn spawn_task(
         let mut force_update_time = false;
         let mut playback_ratio = 2_u32.pow(speed);
         loop {
-            enum Res {
-                Wait(Option<Box<vt100::Screen>>),
-                TimerAction(
-                    Result<
-                        crate::event::TimerAction,
-                        async_std::channel::RecvError,
-                    >,
-                ),
-            }
             let wait = async {
-                let wait_read = frames.lock_arc().await.wait_for_frame(idx);
+                let wait_read =
+                    frames.clone().lock_owned().await.wait_for_frame(idx);
                 if wait_read.await {
-                    let frame =
-                        frames.lock_arc().await.get(idx).unwrap().clone();
+                    let frame = frames
+                        .clone()
+                        .lock_owned()
+                        .await
+                        .get(idx)
+                        .unwrap()
+                        .clone();
                     if force_update_time {
                         let now = std::time::Instant::now();
                         start_time = now - frame.delay() * playback_ratio / 16
@@ -54,7 +48,7 @@ pub fn spawn_task(
                     } else if paused_time.is_some() {
                         std::future::pending::<()>().await;
                     } else {
-                        async_std::task::sleep(
+                        tokio::time::sleep(
                             (start_time
                                 + frame.delay() * playback_ratio / 16)
                                 .saturating_duration_since(
@@ -63,117 +57,120 @@ pub fn spawn_task(
                         )
                         .await;
                     }
-                    Res::Wait(Some(Box::new(frame.into_screen())))
+                    Some(Box::new(frame.into_screen()))
                 } else {
-                    Res::Wait(None)
+                    None
                 }
             };
-            let action = async { Res::TimerAction(timer_r.recv().await) };
-            match wait.race(action).await {
-                Res::Wait(Some(screen)) => {
+            tokio::select! {
+                screen = wait => if let Some(screen) = screen {
                     event_w
                         .send(crate::event::Event::FrameTransition((
                             idx, screen,
                         )))
-                        .await
                         // event_w is never closed, so this can never fail
                         .unwrap();
                     idx += 1;
                 }
-                Res::Wait(None) => {
-                    idx = frames.lock_arc().await.count() - 1;
+                else {
+                    idx = frames.clone().lock_owned().await.count() - 1;
                     paused_time = Some(std::time::Instant::now());
                     event_w
                         .send(crate::event::Event::Paused(true))
-                        .await
                         // event_w is never closed, so this can never fail
                         .unwrap();
-                }
-                Res::TimerAction(Ok(action)) => match action {
-                    crate::event::TimerAction::Pause => {
-                        let now = std::time::Instant::now();
-                        if let Some(time) = paused_time.take() {
-                            start_time += now - time;
-                        } else {
-                            paused_time = Some(now);
-                        }
-                        event_w
-                            .send(crate::event::Event::Paused(
-                                paused_time.is_some(),
-                            ))
-                            .await
-                            // event_w is never closed, so this can never fail
-                            .unwrap();
-                    }
-                    crate::event::TimerAction::FirstFrame => {
-                        idx = 0;
-                        force_update_time = true;
-                    }
-                    crate::event::TimerAction::LastFrame => {
-                        idx = frames.lock_arc().await.count() - 1;
-                        force_update_time = true;
-                    }
-                    // force_update_time will immediately transition to the
-                    // next frame and do idx += 1 on its own
-                    crate::event::TimerAction::NextFrame => {
-                        force_update_time = true;
-                    }
-                    crate::event::TimerAction::PreviousFrame => {
-                        idx = idx.saturating_sub(2);
-                        force_update_time = true;
-                    }
-                    crate::event::TimerAction::SpeedUp => {
-                        if playback_ratio > 1 {
-                            playback_ratio /= 2;
+                },
+                action = timer_r.recv() => match action {
+                    Some(action) => match action {
+                        crate::event::TimerAction::Pause => {
                             let now = std::time::Instant::now();
-                            start_time = now - (now - start_time) / 2;
+                            if let Some(time) = paused_time.take() {
+                                start_time += now - time;
+                            } else {
+                                paused_time = Some(now);
+                            }
                             event_w
-                                .send(crate::event::Event::Speed(
-                                    playback_ratio,
+                                .send(crate::event::Event::Paused(
+                                    paused_time.is_some(),
                                 ))
-                                .await
                                 // event_w is never closed, so this can never
                                 // fail
                                 .unwrap();
                         }
-                    }
-                    crate::event::TimerAction::SlowDown => {
-                        if playback_ratio < 256 {
-                            playback_ratio *= 2;
-                            let now = std::time::Instant::now();
-                            start_time = now - (now - start_time) * 2;
-                            event_w
-                                .send(crate::event::Event::Speed(
-                                    playback_ratio,
-                                ))
-                                .await
-                                // event_w is never closed, so this can never
-                                // fail
-                                .unwrap();
-                        }
-                    }
-                    crate::event::TimerAction::DefaultSpeed => {
-                        let now = std::time::Instant::now();
-                        start_time = now
-                            - (((now - start_time) * 16) / playback_ratio);
-                        playback_ratio = 16;
-                        event_w
-                            .send(crate::event::Event::Speed(playback_ratio))
-                            .await
-                            // event_w is never closed, so this can never fail
-                            .unwrap();
-                    }
-                    crate::event::TimerAction::Search(s, backwards) => {
-                        if let Some(new_idx) =
-                            frames.lock_arc().await.search(idx, &s, backwards)
-                        {
-                            idx = new_idx;
+                        crate::event::TimerAction::FirstFrame => {
+                            idx = 0;
                             force_update_time = true;
                         }
+                        crate::event::TimerAction::LastFrame => {
+                            idx =
+                                frames.clone().lock_owned().await.count() - 1;
+                            force_update_time = true;
+                        }
+                        // force_update_time will immediately transition to the
+                        // next frame and do idx += 1 on its own
+                        crate::event::TimerAction::NextFrame => {
+                            force_update_time = true;
+                        }
+                        crate::event::TimerAction::PreviousFrame => {
+                            idx = idx.saturating_sub(2);
+                            force_update_time = true;
+                        }
+                        crate::event::TimerAction::SpeedUp => {
+                            if playback_ratio > 1 {
+                                playback_ratio /= 2;
+                                let now = std::time::Instant::now();
+                                start_time = now - (now - start_time) / 2;
+                                event_w
+                                    .send(crate::event::Event::Speed(
+                                        playback_ratio,
+                                    ))
+                                    // event_w is never closed, so this can
+                                    // never fail
+                                    .unwrap();
+                            }
+                        }
+                        crate::event::TimerAction::SlowDown => {
+                            if playback_ratio < 256 {
+                                playback_ratio *= 2;
+                                let now = std::time::Instant::now();
+                                start_time = now - (now - start_time) * 2;
+                                event_w
+                                    .send(crate::event::Event::Speed(
+                                        playback_ratio,
+                                    ))
+                                    // event_w is never closed, so this can
+                                    // never fail
+                                    .unwrap();
+                            }
+                        }
+                        crate::event::TimerAction::DefaultSpeed => {
+                            let now = std::time::Instant::now();
+                            start_time = now
+                                - (((now - start_time) * 16) / playback_ratio);
+                            playback_ratio = 16;
+                            event_w
+                                .send(
+                                    crate::event::Event::Speed(playback_ratio)
+                                )
+                                // event_w is never closed, so this can never
+                                // fail
+                                .unwrap();
+                        }
+                        crate::event::TimerAction::Search(s, backwards) => {
+                            if let Some(new_idx) =
+                                frames.clone()
+                                    .lock_owned()
+                                    .await
+                                    .search(idx, &s, backwards)
+                            {
+                                idx = new_idx;
+                                force_update_time = true;
+                            }
+                        }
+                        crate::event::TimerAction::Quit => break,
                     }
-                    crate::event::TimerAction::Quit => break,
+                    None => unreachable!(),
                 },
-                Res::TimerAction(Err(e)) => panic!("{}", e),
             }
         }
     })

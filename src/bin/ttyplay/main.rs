@@ -56,6 +56,7 @@ struct Opt {
     speed: u32,
 }
 
+#[tokio::main]
 async fn async_main(opt: Opt) -> anyhow::Result<()> {
     let Opt {
         file,
@@ -66,19 +67,19 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
 
     let speed = speed.clamp(0, 8);
 
-    let fh = async_std::fs::File::open(file).await?;
+    let fh = tokio::fs::File::open(file).await?;
 
-    let mut input = textmode::Input::new().await?;
+    let mut input = textmode::blocking::Input::new()?;
     let mut output = textmode::Output::new().await?;
     let _input_guard = input.take_raw_guard();
     let _output_guard = output.take_screen_guard();
 
-    let (event_w, event_r) = async_std::channel::unbounded();
-    let (timer_w, timer_r) = async_std::channel::unbounded();
+    let (event_w, event_r) = tokio::sync::mpsc::unbounded_channel();
+    let (timer_w, timer_r) = tokio::sync::mpsc::unbounded_channel();
 
-    input::spawn_task(event_w.clone(), input);
+    input::spawn_thread(event_w.clone(), input);
 
-    let frame_data = async_std::sync::Arc::new(async_std::sync::Mutex::new(
+    let frame_data = std::sync::Arc::new(tokio::sync::Mutex::new(
         frames::FrameData::new(),
     ));
     frames::load_from_file(frame_data.clone(), fh, event_w.clone(), clamp);
@@ -93,15 +94,15 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
 
     event::handle_events(event_r, timer_w.clone(), output).await?;
 
-    timer_w.send(event::TimerAction::Quit).await?;
-    timer_task.await;
+    timer_w.send(event::TimerAction::Quit)?;
+    timer_task.await?;
 
     Ok(())
 }
 
 #[paw::main]
 fn main(opt: Opt) {
-    match async_std::task::block_on(async_main(opt)) {
+    match async_main(opt) {
         Ok(_) => (),
         Err(e) => {
             eprintln!("ttyplay: {}", e);

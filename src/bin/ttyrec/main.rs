@@ -11,10 +11,7 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::type_complexity)]
 
-use async_std::io::{ReadExt as _, WriteExt as _};
-use async_std::prelude::FutureExt as _;
-use async_std::stream::StreamExt as _;
-use pty_process::Command as _;
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 #[derive(Debug, structopt::StructOpt)]
 #[structopt(
@@ -55,42 +52,46 @@ fn get_cmd(
     )
 }
 
+#[derive(Debug)]
 enum Event {
     Key(textmode::Result<Option<textmode::Key>>),
     Stdout(std::io::Result<Vec<u8>>),
     Resize((u16, u16)),
     Error(anyhow::Error),
+    Quit,
 }
 
+#[tokio::main]
 async fn async_main(opt: Opt) -> anyhow::Result<()> {
     let Opt { cmd, file } = opt;
     let (cmd, args) = get_cmd(cmd);
 
-    let fh = async_std::fs::File::create(file).await?;
+    let fh = tokio::fs::File::create(file).await?;
 
-    let mut input = textmode::Input::new().await?;
+    let mut input = textmode::blocking::Input::new()?;
     let _input_guard = input.take_raw_guard();
-    let mut stdout = async_std::io::stdout();
+    let mut stdout = tokio::io::stdout();
 
     let size = terminal_size::terminal_size().map_or(
         (24, 80),
         |(terminal_size::Width(w), terminal_size::Height(h))| (h, w),
     );
-    let child = async_std::process::Command::new(cmd)
-        .args(args)
-        .spawn_pty(Some(&pty_process::Size::new(size.0, size.1)))?;
+    let mut pty = pty_process::Pty::new()?;
+    pty.resize(pty_process::Size::new(size.0, size.1))?;
+    let pts = pty.pts()?;
+    let mut child = pty_process::Command::new(cmd).args(args).spawn(&pts)?;
 
-    let (event_w, event_r) = async_std::channel::unbounded();
-    let (input_w, input_r) = async_std::channel::unbounded();
-    let (resize_w, resize_r) = async_std::channel::unbounded();
+    let (event_w, mut event_r) = tokio::sync::mpsc::unbounded_channel();
+    let (input_w, mut input_r) = tokio::sync::mpsc::unbounded_channel();
+    let (resize_w, mut resize_r) = tokio::sync::mpsc::unbounded_channel();
 
     {
-        let mut signals = signal_hook_async_std::Signals::new(&[
-            signal_hook::consts::signal::SIGWINCH,
-        ])?;
+        let mut signals = tokio::signal::unix::signal(
+            tokio::signal::unix::SignalKind::window_change(),
+        )?;
         let event_w = event_w.clone();
-        async_std::task::spawn(async move {
-            while signals.next().await.is_some() {
+        tokio::task::spawn(async move {
+            while signals.recv().await.is_some() {
                 event_w
                     .send(Event::Resize(
                         terminal_size::terminal_size().map_or(
@@ -101,7 +102,6 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                             )| { (h, w) },
                         ),
                     ))
-                    .await
                     // event_w is never closed, so this can never fail
                     .unwrap();
             }
@@ -110,11 +110,10 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
 
     {
         let event_w = event_w.clone();
-        async_std::task::spawn(async move {
+        std::thread::spawn(move || {
             loop {
                 event_w
-                    .send(Event::Key(input.read_key().await))
-                    .await
+                    .send(Event::Key(input.read_key()))
                     // event_w is never closed, so this can never fail
                     .unwrap();
             }
@@ -123,56 +122,49 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
 
     {
         let event_w = event_w.clone();
-        async_std::task::spawn(async move {
+        tokio::task::spawn(async move {
             loop {
-                enum Res {
-                    Read(Result<usize, std::io::Error>),
-                    Write(Result<Vec<u8>, async_std::channel::RecvError>),
-                    Resize(Result<(u16, u16), async_std::channel::RecvError>),
-                }
                 let mut buf = [0_u8; 4096];
-                let mut pty = child.pty();
-                let read = async { Res::Read(pty.read(&mut buf).await) };
-                let write = async { Res::Write(input_r.recv().await) };
-                let resize = async { Res::Resize(resize_r.recv().await) };
-                match read.race(write).race(resize).await {
-                    Res::Read(res) => {
+                tokio::select! {
+                    res = pty.read(&mut buf) => {
                         let res = res.map(|n| buf[..n].to_vec());
                         let err = res.is_err();
                         event_w
                             .send(Event::Stdout(res))
-                            .await
                             // event_w is never closed, so this can never fail
                             .unwrap();
                         if err {
+                            eprintln!("pty read failed: {}", err);
                             break;
                         }
                     }
-                    Res::Write(res) => {
+                    res = input_r.recv() => {
                         // input_r is never closed, so this can never fail
-                        let bytes = res.unwrap();
+                        let bytes: Vec<u8> = res.unwrap();
                         if let Err(e) = pty.write(&bytes).await {
                             event_w
                                 .send(Event::Error(anyhow::anyhow!(e)))
-                                .await
                                 // event_w is never closed, so this can never
                                 // fail
                                 .unwrap();
                         }
                     }
-                    Res::Resize(res) => {
+                    res = resize_r.recv() => {
                         // resize_r is never closed, so this can never fail
-                        let size = res.unwrap();
-                        if let Err(e) = child.resize_pty(
-                            &pty_process::Size::new(size.0, size.1),
+                        let size: (u16, u16) = res.unwrap();
+                        if let Err(e) = pty.resize(
+                            pty_process::Size::new(size.0, size.1),
                         ) {
                             event_w
                                 .send(Event::Error(anyhow::anyhow!(e)))
-                                .await
                                 // event_w is never closed, so this can never
                                 // fail
                                 .unwrap();
                         }
+                    }
+                    _ = child.wait() => {
+                        event_w.send(Event::Quit).unwrap();
+                        break;
                     }
                 }
             }
@@ -181,11 +173,12 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
 
     let mut writer = ttyrec::Writer::new(fh);
     loop {
-        match event_r.recv().await? {
+        // XXX unwrap
+        match event_r.recv().await.unwrap() {
             Event::Key(key) => {
                 let key = key?;
                 if let Some(key) = key {
-                    input_w.send(key.into_bytes()).await?;
+                    input_w.send(key.into_bytes()).unwrap();
                 } else {
                     break;
                 }
@@ -197,18 +190,16 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                     stdout.flush().await?;
                 }
                 Err(e) => {
-                    if e.raw_os_error() == Some(libc::EIO) {
-                        break;
-                    }
                     anyhow::bail!("failed to read from child process: {}", e);
                 }
             },
             Event::Resize((h, w)) => {
-                resize_w.send((h, w)).await?;
+                resize_w.send((h, w)).unwrap();
             }
             Event::Error(e) => {
                 return Err(e);
             }
+            Event::Quit => break,
         }
     }
 
@@ -217,7 +208,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
 
 #[paw::main]
 fn main(opt: Opt) {
-    match async_std::task::block_on(async_main(opt)) {
+    match async_main(opt) {
         Ok(_) => (),
         Err(e) => {
             eprintln!("ttyrec: {}", e);

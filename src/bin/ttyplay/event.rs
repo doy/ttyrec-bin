@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum Event {
     FrameTransition((usize, Box<vt100::Screen>)),
     FrameLoaded(Option<usize>),
@@ -13,6 +14,7 @@ pub enum Event {
     Quit,
 }
 
+#[derive(Debug)]
 pub enum TimerAction {
     Pause,
     FirstFrame,
@@ -27,23 +29,26 @@ pub enum TimerAction {
 }
 
 struct Reader {
-    pending: async_std::sync::Mutex<Pending>,
-    cvar: async_std::sync::Condvar,
+    pending: tokio::sync::Mutex<Pending>,
+    // XXX not quite a condvar, but i think close enough as long as there is
+    // only ever one consumer? see
+    // https://github.com/tokio-rs/tokio/issues/3892
+    cvar: tokio::sync::Notify,
 }
 
 impl Reader {
     fn new(
-        input: async_std::channel::Receiver<Event>,
-    ) -> async_std::sync::Arc<Self> {
+        mut input: tokio::sync::mpsc::UnboundedReceiver<Event>,
+    ) -> std::sync::Arc<Self> {
         let this = Self {
-            pending: async_std::sync::Mutex::new(Pending::new()),
-            cvar: async_std::sync::Condvar::new(),
+            pending: tokio::sync::Mutex::new(Pending::new()),
+            cvar: tokio::sync::Notify::new(),
         };
-        let this = async_std::sync::Arc::new(this);
+        let this = std::sync::Arc::new(this);
         {
             let this = this.clone();
-            async_std::task::spawn(async move {
-                while let Ok(event) = input.recv().await {
+            tokio::task::spawn(async move {
+                while let Some(event) = input.recv().await {
                     this.event(event).await;
                 }
                 this.event(Event::Quit).await;
@@ -53,13 +58,14 @@ impl Reader {
     }
 
     async fn read(&self) -> Option<Event> {
-        let mut pending = self
-            .cvar
-            .wait_until(self.pending.lock().await, |pending| {
-                pending.has_event()
-            })
-            .await;
-        pending.get_event()
+        loop {
+            let mut pending = self.pending.lock().await;
+            if pending.has_event() {
+                return pending.get_event();
+            }
+            drop(pending);
+            self.cvar.notified().await;
+        }
     }
 
     async fn event(&self, event: Event) {
@@ -197,8 +203,8 @@ impl Pending {
 }
 
 pub async fn handle_events(
-    event_r: async_std::channel::Receiver<Event>,
-    timer_w: async_std::channel::Sender<TimerAction>,
+    event_r: tokio::sync::mpsc::UnboundedReceiver<Event>,
+    timer_w: tokio::sync::mpsc::UnboundedSender<TimerAction>,
     mut output: textmode::Output,
 ) -> anyhow::Result<()> {
     let mut display = crate::display::Display::new();
@@ -206,7 +212,7 @@ pub async fn handle_events(
     while let Some(event) = events.read().await {
         match event {
             Event::TimerAction(action) => {
-                timer_w.send(action).await?;
+                timer_w.send(action)?;
                 continue;
             }
             Event::FrameTransition((idx, screen)) => {
@@ -240,7 +246,7 @@ pub async fn handle_events(
             }
             Event::RunSearch(s, backwards) => {
                 display.clear_search();
-                timer_w.send(TimerAction::Search(s, backwards)).await?;
+                timer_w.send(TimerAction::Search(s, backwards))?;
             }
             Event::Error(e) => {
                 return Err(e);

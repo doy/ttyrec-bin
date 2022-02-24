@@ -21,13 +21,13 @@ impl Frame {
 pub struct FrameData {
     frames: Vec<Frame>,
     done_reading: bool,
-    new_frame_w: async_std::channel::Sender<Option<usize>>,
-    new_frame_r: async_std::channel::Receiver<Option<usize>>,
+    new_frame_w: tokio::sync::watch::Sender<Option<usize>>,
+    new_frame_r: tokio::sync::watch::Receiver<Option<usize>>,
 }
 
 impl FrameData {
     pub fn new() -> Self {
-        let (new_frame_w, new_frame_r) = async_std::channel::unbounded();
+        let (new_frame_w, new_frame_r) = tokio::sync::watch::channel(Some(0));
         Self {
             frames: vec![],
             done_reading: false,
@@ -72,7 +72,6 @@ impl FrameData {
         self.frames.push(frame);
         self.new_frame_w
             .send(Some(self.frames.len()))
-            .await
             // new_frame_w is never closed, so this can never fail
             .unwrap();
     }
@@ -81,7 +80,6 @@ impl FrameData {
         self.done_reading = true;
         self.new_frame_w
             .send(None)
-            .await
             // new_frame_w is never closed, so this can never fail
             .unwrap();
     }
@@ -98,16 +96,15 @@ impl FrameData {
         if self.done_reading {
             return Box::pin(std::future::ready(false));
         }
-        let new_frame_r = self.new_frame_r.clone();
+        let mut new_frame_r = self.new_frame_r.clone();
         Box::pin(async move {
-            while let Some(new_len) = new_frame_r
-                .recv()
-                .await
-                // new_frame_r is never closed, so this can never fail
-                .unwrap()
-            {
-                if i < new_len {
-                    return true;
+            while new_frame_r.changed().await.is_ok() {
+                if let Some(new_len) = *new_frame_r.borrow() {
+                    if i < new_len {
+                        return true;
+                    }
+                } else {
+                    break;
                 }
             }
             false
@@ -116,13 +113,13 @@ impl FrameData {
 }
 
 pub fn load_from_file(
-    frames: async_std::sync::Arc<async_std::sync::Mutex<FrameData>>,
-    fh: async_std::fs::File,
-    event_w: async_std::channel::Sender<crate::event::Event>,
+    frames: std::sync::Arc<tokio::sync::Mutex<FrameData>>,
+    fh: tokio::fs::File,
+    event_w: tokio::sync::mpsc::UnboundedSender<crate::event::Event>,
     clamp: Option<u64>,
 ) {
     let clamp = clamp.map(std::time::Duration::from_millis);
-    async_std::task::spawn(async move {
+    tokio::task::spawn(async move {
         let mut reader = ttyrec::Reader::new(fh);
         let size = terminal_size::terminal_size().map_or(
             (24, 80),
@@ -144,21 +141,19 @@ pub fn load_from_file(
                 }
             }
             parser.process(&frame.data);
-            let mut frames = frames.lock_arc().await;
+            let mut frames = frames.clone().lock_owned().await;
             frames
                 .add_frame(Frame::new(parser.screen().clone(), delay))
                 .await;
             event_w
                 .send(crate::event::Event::FrameLoaded(Some(frames.count())))
-                .await
                 // event_w is never closed, so this can never fail
                 .unwrap();
             prev_delay = delay;
         }
-        frames.lock_arc().await.done_reading().await;
+        frames.lock_owned().await.done_reading().await;
         event_w
             .send(crate::event::Event::FrameLoaded(None))
-            .await
             // event_w is never closed, so this can never fail
             .unwrap();
     });
