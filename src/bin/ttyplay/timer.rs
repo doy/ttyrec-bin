@@ -1,4 +1,4 @@
-use futures::future::FutureExt as _;
+use futures_util::future::FutureExt as _;
 
 pub fn spawn_task(
     event_w: tokio::sync::mpsc::UnboundedSender<crate::event::Event>,
@@ -69,7 +69,7 @@ pub fn spawn_task(
                     None
                 }
             };
-            let select: futures::future::SelectAll<_> = [
+            let select: futures_util::future::SelectAll<_> = [
                 wait.map(Res::Frame).boxed(),
                 timer_r.recv().map(Res::Action).boxed(),
             ]
