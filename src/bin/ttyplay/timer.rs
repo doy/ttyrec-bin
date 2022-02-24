@@ -1,3 +1,5 @@
+use futures::future::FutureExt as _;
+
 pub fn spawn_task(
     event_w: tokio::sync::mpsc::UnboundedSender<crate::event::Event>,
     frames: std::sync::Arc<tokio::sync::Mutex<crate::frames::FrameData>>,
@@ -8,6 +10,11 @@ pub fn spawn_task(
     speed: u32,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
+        enum Res {
+            Frame(Option<Box<vt100::Screen>>),
+            Action(Option<crate::event::TimerAction>),
+        }
+
         let mut idx = 0;
         let mut start_time = std::time::Instant::now();
         let mut paused_time = if pause_at_start {
@@ -62,8 +69,14 @@ pub fn spawn_task(
                     None
                 }
             };
-            tokio::select! {
-                screen = wait => if let Some(screen) = screen {
+            let select: futures::future::SelectAll<_> = [
+                wait.map(Res::Frame).boxed(),
+                timer_r.recv().map(Res::Action).boxed(),
+            ]
+            .into_iter()
+            .collect();
+            match select.map(|(res, _, _)| res).await {
+                Res::Frame(Some(screen)) => {
                     event_w
                         .send(crate::event::Event::FrameTransition((
                             idx, screen,
@@ -72,105 +85,103 @@ pub fn spawn_task(
                         .unwrap();
                     idx += 1;
                 }
-                else {
+                Res::Frame(None) => {
                     idx = frames.clone().lock_owned().await.count() - 1;
                     paused_time = Some(std::time::Instant::now());
                     event_w
                         .send(crate::event::Event::Paused(true))
                         // event_w is never closed, so this can never fail
                         .unwrap();
-                },
-                action = timer_r.recv() => match action {
-                    Some(action) => match action {
-                        crate::event::TimerAction::Pause => {
-                            let now = std::time::Instant::now();
-                            paused_time.take().map_or_else(|| {
+                }
+                Res::Action(Some(action)) => match action {
+                    crate::event::TimerAction::Pause => {
+                        let now = std::time::Instant::now();
+                        paused_time.take().map_or_else(
+                            || {
                                 paused_time = Some(now);
-                            }, |time| {
+                            },
+                            |time| {
                                 start_time += now - time;
-                            });
+                            },
+                        );
+                        event_w
+                            .send(crate::event::Event::Paused(
+                                paused_time.is_some(),
+                            ))
+                            // event_w is never closed, so this can never fail
+                            .unwrap();
+                    }
+                    crate::event::TimerAction::FirstFrame => {
+                        idx = 0;
+                        force_update_time = true;
+                    }
+                    crate::event::TimerAction::LastFrame => {
+                        idx = frames.clone().lock_owned().await.count() - 1;
+                        force_update_time = true;
+                    }
+                    // force_update_time will immediately transition to the
+                    // next frame and do idx += 1 on its own
+                    crate::event::TimerAction::NextFrame => {
+                        force_update_time = true;
+                    }
+                    crate::event::TimerAction::PreviousFrame => {
+                        idx = idx.saturating_sub(2);
+                        force_update_time = true;
+                    }
+                    crate::event::TimerAction::SpeedUp => {
+                        if playback_ratio > 1 {
+                            playback_ratio /= 2;
+                            let now = std::time::Instant::now();
+                            start_time = now - (now - start_time) / 2;
                             event_w
-                                .send(crate::event::Event::Paused(
-                                    paused_time.is_some(),
+                                .send(crate::event::Event::Speed(
+                                    playback_ratio,
                                 ))
                                 // event_w is never closed, so this can never
                                 // fail
                                 .unwrap();
                         }
-                        crate::event::TimerAction::FirstFrame => {
-                            idx = 0;
-                            force_update_time = true;
-                        }
-                        crate::event::TimerAction::LastFrame => {
-                            idx =
-                                frames.clone().lock_owned().await.count() - 1;
-                            force_update_time = true;
-                        }
-                        // force_update_time will immediately transition to the
-                        // next frame and do idx += 1 on its own
-                        crate::event::TimerAction::NextFrame => {
-                            force_update_time = true;
-                        }
-                        crate::event::TimerAction::PreviousFrame => {
-                            idx = idx.saturating_sub(2);
-                            force_update_time = true;
-                        }
-                        crate::event::TimerAction::SpeedUp => {
-                            if playback_ratio > 1 {
-                                playback_ratio /= 2;
-                                let now = std::time::Instant::now();
-                                start_time = now - (now - start_time) / 2;
-                                event_w
-                                    .send(crate::event::Event::Speed(
-                                        playback_ratio,
-                                    ))
-                                    // event_w is never closed, so this can
-                                    // never fail
-                                    .unwrap();
-                            }
-                        }
-                        crate::event::TimerAction::SlowDown => {
-                            if playback_ratio < 256 {
-                                playback_ratio *= 2;
-                                let now = std::time::Instant::now();
-                                start_time = now - (now - start_time) * 2;
-                                event_w
-                                    .send(crate::event::Event::Speed(
-                                        playback_ratio,
-                                    ))
-                                    // event_w is never closed, so this can
-                                    // never fail
-                                    .unwrap();
-                            }
-                        }
-                        crate::event::TimerAction::DefaultSpeed => {
+                    }
+                    crate::event::TimerAction::SlowDown => {
+                        if playback_ratio < 256 {
+                            playback_ratio *= 2;
                             let now = std::time::Instant::now();
-                            start_time = now
-                                - (((now - start_time) * 16) / playback_ratio);
-                            playback_ratio = 16;
+                            start_time = now - (now - start_time) * 2;
                             event_w
-                                .send(
-                                    crate::event::Event::Speed(playback_ratio)
-                                )
+                                .send(crate::event::Event::Speed(
+                                    playback_ratio,
+                                ))
                                 // event_w is never closed, so this can never
                                 // fail
                                 .unwrap();
                         }
-                        crate::event::TimerAction::Search(s, backwards) => {
-                            if let Some(new_idx) =
-                                frames.clone()
-                                    .lock_owned()
-                                    .await
-                                    .search(idx, &s, backwards)
-                            {
-                                idx = new_idx;
-                                force_update_time = true;
-                            }
-                        }
-                        crate::event::TimerAction::Quit => break,
                     }
-                    None => unreachable!(),
+                    crate::event::TimerAction::DefaultSpeed => {
+                        let now = std::time::Instant::now();
+                        start_time = now
+                            - (((now - start_time) * 16) / playback_ratio);
+                        playback_ratio = 16;
+                        event_w
+                            .send(crate::event::Event::Speed(playback_ratio))
+                            // event_w is never closed, so this can never fail
+                            .unwrap();
+                    }
+                    crate::event::TimerAction::Search(s, backwards) => {
+                        if let Some(new_idx) = frames
+                            .clone()
+                            .lock_owned()
+                            .await
+                            .search(idx, &s, backwards)
+                        {
+                            idx = new_idx;
+                            force_update_time = true;
+                        }
+                    }
+                    crate::event::TimerAction::Quit => break,
                 },
+                Res::Action(None) => {
+                    unreachable!()
+                }
             }
         }
     })
