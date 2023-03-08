@@ -11,14 +11,16 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::type_complexity)]
 
+use clap::Parser as _;
+
 mod display;
 mod event;
 mod frames;
 mod input;
 mod timer;
 
-#[derive(Debug, structopt::StructOpt)]
-#[structopt(
+#[derive(Debug, clap::Parser)]
+#[command(
     name = "ttyplay",
     about = "Plays back ttyrec files",
     long_about = "\n\
@@ -29,7 +31,7 @@ mod timer;
         paused."
 )]
 struct Opt {
-    #[structopt(
+    #[arg(
         short,
         long,
         default_value = "ttyrec",
@@ -37,16 +39,16 @@ struct Opt {
     )]
     file: std::ffi::OsString,
 
-    #[structopt(
+    #[arg(
         long,
         help = "Restrict time between frames to at most this many milliseconds"
     )]
     clamp: Option<u64>,
 
-    #[structopt(short, long, help = "Start the player paused")]
+    #[arg(short, long, help = "Start the player paused")]
     paused: bool,
 
-    #[structopt(
+    #[arg(
         short,
         long,
         default_value = "4",
@@ -100,8 +102,8 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[paw::main]
-fn main(opt: Opt) {
+fn main() {
+    let opt = Opt::parse();
     match async_main(opt) {
         Ok(_) => (),
         Err(e) => {

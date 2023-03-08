@@ -11,10 +11,11 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::type_complexity)]
 
+use clap::Parser as _;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
-#[derive(Debug, structopt::StructOpt)]
-#[structopt(
+#[derive(Debug, clap::Parser)]
+#[command(
     name = "ttyrec",
     about = "Records ttyrec files",
     long_about = "\n\
@@ -23,7 +24,7 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
         for later playback (such as via the included `ttyplay` command)."
 )]
 struct Opt {
-    #[structopt(
+    #[arg(
         short,
         long,
         default_value = "ttyrec",
@@ -31,7 +32,7 @@ struct Opt {
     )]
     file: std::ffi::OsString,
 
-    #[structopt(short, long, help = "Command to run [default: $SHELL]")]
+    #[arg(short, long, help = "Command to run [default: $SHELL]")]
     cmd: Option<std::ffi::OsString>,
 }
 
@@ -206,8 +207,8 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[paw::main]
-fn main(opt: Opt) {
+fn main() {
+    let opt = Opt::parse();
     match async_main(opt) {
         Ok(_) => (),
         Err(e) => {

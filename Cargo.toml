@@ -13,20 +13,13 @@ license = "MIT"
 include = ["src/**/*", "LICENSE", "README.md", "CHANGELOG.md"]
 
 [dependencies]
-anyhow = "1.0.55"
-futures-util = "0.3.21"
-libc = "0.2.119"
-paw = "1.0.0"
-pty-process = { version = "0.2.0", features = ["async"] }
-structopt = { version = "0.3.26", features = ["paw", "wrap_help"] }
-terminal_size = "0.1.17"
-textmode = { version = "0.3.0", features = ["async"] }
-tokio = { version = "1.17.0", features = ["full"] }
-ttyrec = { version = "0.3.3", features = ["async"] }
-vt100 = "0.15.1"
-
-[patch.crates-io]
-nix = { git = "https://github.com/nix-rust/nix" }
-pty-process = { git = "https://github.com/doy/pty-process" }
-textmode = { git = "https://github.com/doy/textmode" }
-ttyrec = { git = "https://github.com/doy/ttyrec" }
+anyhow = "1.0.69"
+clap = { version = "4.1.8", features = ["wrap_help", "derive"] }
+futures-util = "0.3.26"
+libc = "0.2.139"
+pty-process = { version = "0.3.0", features = ["async"] }
+terminal_size = "0.2.5"
+textmode = { version = "0.4.0", features = ["async"] }
+tokio = { version = "1.26.0", features = ["full"] }
+ttyrec = { version = "0.4.0", features = ["async"] }
+vt100 = "0.15.2"
