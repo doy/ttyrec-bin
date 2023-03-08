@@ -12,7 +12,8 @@
 #![allow(clippy::type_complexity)]
 
 use clap::Parser as _;
-use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+use futures_util::StreamExt as _;
+use tokio::io::AsyncWriteExt as _;
 
 #[derive(Debug, clap::Parser)]
 #[command(
@@ -56,7 +57,7 @@ fn get_cmd(
 #[derive(Debug)]
 enum Event {
     Key(textmode::Result<Option<textmode::Key>>),
-    Stdout(std::io::Result<Vec<u8>>),
+    Stdout(std::io::Result<bytes::Bytes>),
     Resize((u16, u16)),
     Error(anyhow::Error),
     Quit,
@@ -83,8 +84,8 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
     let mut child = pty_process::Command::new(cmd).args(args).spawn(&pts)?;
 
     let (event_w, mut event_r) = tokio::sync::mpsc::unbounded_channel();
-    let (input_w, mut input_r) = tokio::sync::mpsc::unbounded_channel();
-    let (resize_w, mut resize_r) = tokio::sync::mpsc::unbounded_channel();
+    let (input_w, input_r) = tokio::sync::mpsc::unbounded_channel();
+    let (resize_w, resize_r) = tokio::sync::mpsc::unbounded_channel();
 
     {
         let mut signals = tokio::signal::unix::signal(
@@ -123,27 +124,49 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
 
     {
         let event_w = event_w.clone();
-        #[allow(clippy::redundant_pub_crate)]
         tokio::task::spawn(async move {
-            loop {
-                let mut buf = [0_u8; 4096];
-                tokio::select! {
-                    res = pty.read(&mut buf) => {
-                        let res = res.map(|n| buf[..n].to_vec());
+            enum Res {
+                Read(std::io::Result<bytes::Bytes>),
+                Input(Vec<u8>),
+                Resize((u16, u16)),
+                Exit(std::io::Result<std::process::ExitStatus>),
+            }
+
+            let (pty_r, mut pty_w) = pty.split();
+
+            let mut select: futures_util::stream::SelectAll<_> = [
+                tokio_util::io::ReaderStream::new(pty_r)
+                    .map(Res::Read)
+                    .boxed(),
+                tokio_stream::wrappers::UnboundedReceiverStream::new(input_r)
+                    .map(Res::Input)
+                    .boxed(),
+                tokio_stream::wrappers::UnboundedReceiverStream::new(
+                    resize_r,
+                )
+                .map(Res::Resize)
+                .boxed(),
+                futures_util::stream::once(child.wait())
+                    .map(Res::Exit)
+                    .boxed(),
+            ]
+            .into_iter()
+            .collect();
+
+            while let Some(res) = select.next().await {
+                match res {
+                    Res::Read(res) => {
                         let err = res.is_err();
                         event_w
                             .send(Event::Stdout(res))
                             // event_w is never closed, so this can never fail
                             .unwrap();
                         if err {
-                            eprintln!("pty read failed: {err}");
                             break;
                         }
                     }
-                    res = input_r.recv() => {
-                        // input_r is never closed, so this can never fail
-                        let bytes: Vec<u8> = res.unwrap();
-                        if let Err(e) = pty.write(&bytes).await {
+                    Res::Input(bytes) => {
+                        if let Err(e) = pty_w.write(&bytes).await {
                             event_w
                                 .send(Event::Error(anyhow::anyhow!(e)))
                                 // event_w is never closed, so this can never
@@ -151,12 +174,10 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                                 .unwrap();
                         }
                     }
-                    res = resize_r.recv() => {
-                        // resize_r is never closed, so this can never fail
-                        let size: (u16, u16) = res.unwrap();
-                        if let Err(e) = pty.resize(
-                            pty_process::Size::new(size.0, size.1),
-                        ) {
+                    Res::Resize((rows, cols)) => {
+                        if let Err(e) =
+                            pty_w.resize(pty_process::Size::new(rows, cols))
+                        {
                             event_w
                                 .send(Event::Error(anyhow::anyhow!(e)))
                                 // event_w is never closed, so this can never
@@ -164,7 +185,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                                 .unwrap();
                         }
                     }
-                    _ = child.wait() => {
+                    Res::Exit(_) => {
                         event_w.send(Event::Quit).unwrap();
                         break;
                     }
