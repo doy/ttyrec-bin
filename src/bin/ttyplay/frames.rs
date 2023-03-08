@@ -68,7 +68,7 @@ impl FrameData {
         }
     }
 
-    pub async fn add_frame(&mut self, frame: Frame) {
+    pub fn add_frame(&mut self, frame: Frame) {
         self.frames.push(frame);
         self.new_frame_w
             .send(Some(self.frames.len()))
@@ -76,7 +76,7 @@ impl FrameData {
             .unwrap();
     }
 
-    pub async fn done_reading(&mut self) {
+    pub fn done_reading(&mut self) {
         self.done_reading = true;
         self.new_frame_w
             .send(None)
@@ -142,16 +142,14 @@ pub fn load_from_file(
             }
             parser.process(&frame.data);
             let mut frames = frames.clone().lock_owned().await;
-            frames
-                .add_frame(Frame::new(parser.screen().clone(), delay))
-                .await;
+            frames.add_frame(Frame::new(parser.screen().clone(), delay));
             event_w
                 .send(crate::event::Event::FrameLoaded(Some(frames.count())))
                 // event_w is never closed, so this can never fail
                 .unwrap();
             prev_delay = delay;
         }
-        frames.lock_owned().await.done_reading().await;
+        frames.lock_owned().await.done_reading();
         event_w
             .send(crate::event::Event::FrameLoaded(None))
             // event_w is never closed, so this can never fail

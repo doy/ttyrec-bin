@@ -123,6 +123,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
 
     {
         let event_w = event_w.clone();
+        #[allow(clippy::redundant_pub_crate)]
         tokio::task::spawn(async move {
             loop {
                 let mut buf = [0_u8; 4096];
@@ -135,7 +136,7 @@ async fn async_main(opt: Opt) -> anyhow::Result<()> {
                             // event_w is never closed, so this can never fail
                             .unwrap();
                         if err {
-                            eprintln!("pty read failed: {}", err);
+                            eprintln!("pty read failed: {err}");
                             break;
                         }
                     }
@@ -212,7 +213,7 @@ fn main() {
     match async_main(opt) {
         Ok(_) => (),
         Err(e) => {
-            eprintln!("ttyrec: {}", e);
+            eprintln!("ttyrec: {e}");
             std::process::exit(1);
         }
     };

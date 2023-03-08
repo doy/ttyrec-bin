@@ -42,7 +42,9 @@ pub fn spawn_task(
                         .clone();
                     if force_update_time {
                         let now = std::time::Instant::now();
-                        start_time = now - frame.delay() * playback_ratio / 16
+                        start_time = now
+                            .checked_sub(frame.delay() * playback_ratio / 16)
+                            .unwrap()
                             // give a bit of extra time before moving to the
                             // next frame, otherwise backing up behind two
                             // frames that are extremely close together
@@ -132,7 +134,9 @@ pub fn spawn_task(
                         if playback_ratio > 1 {
                             playback_ratio /= 2;
                             let now = std::time::Instant::now();
-                            start_time = now - (now - start_time) / 2;
+                            start_time = now
+                                .checked_sub((now - start_time) / 2)
+                                .unwrap();
                             event_w
                                 .send(crate::event::Event::Speed(
                                     playback_ratio,
@@ -146,7 +150,9 @@ pub fn spawn_task(
                         if playback_ratio < 256 {
                             playback_ratio *= 2;
                             let now = std::time::Instant::now();
-                            start_time = now - (now - start_time) * 2;
+                            start_time = now
+                                .checked_sub((now - start_time) * 2)
+                                .unwrap();
                             event_w
                                 .send(crate::event::Event::Speed(
                                     playback_ratio,
@@ -159,7 +165,10 @@ pub fn spawn_task(
                     crate::event::TimerAction::DefaultSpeed => {
                         let now = std::time::Instant::now();
                         start_time = now
-                            - (((now - start_time) * 16) / playback_ratio);
+                            .checked_sub(
+                                ((now - start_time) * 16) / playback_ratio,
+                            )
+                            .unwrap();
                         playback_ratio = 16;
                         event_w
                             .send(crate::event::Event::Speed(playback_ratio))

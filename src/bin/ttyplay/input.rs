@@ -107,8 +107,8 @@ pub fn spawn_thread(
                         )
                     }
                     textmode::Key::Char('/') => {
-                        search = Some("".to_string());
-                        crate::event::Event::ActiveSearch("".to_string())
+                        search = Some(String::new());
+                        crate::event::Event::ActiveSearch(String::new())
                     }
                     textmode::Key::Char('n') => {
                         if let Some(ref search) = prev_search {

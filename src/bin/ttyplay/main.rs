@@ -107,7 +107,7 @@ fn main() {
     match async_main(opt) {
         Ok(_) => (),
         Err(e) => {
-            eprintln!("ttyplay: {}", e);
+            eprintln!("ttyplay: {e}");
             std::process::exit(1);
         }
     };
